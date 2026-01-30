@@ -10,7 +10,7 @@ import io.music_assistant.client.data.model.server.ServerQueueItem
 
 data class QueueTrack(
     val id: String,
-    val track: AppMediaItem.Track,
+    val track: PlayableItem,
     val isPlayable: Boolean ,
     val format: AudioFormat?,
     val dsp: Map<String, DSPSettings>?
@@ -23,7 +23,7 @@ data class QueueTrack(
             // Try to use the actual media_item if available
             if (mediaItem != null) {
                 val appMediaItem = mediaItem.toAppMediaItem()
-                if (appMediaItem is AppMediaItem.Track) {
+                if (appMediaItem is PlayableItem) {
                     return QueueTrack(
                         id = queueItemId,
                         track = appMediaItem,
@@ -60,7 +60,7 @@ data class QueueTrack(
                 )
 
                 val appMediaItem = syntheticMediaItem.toAppMediaItem()
-                if (appMediaItem is AppMediaItem.Track) {
+                if (appMediaItem is PlayableItem) {
                     return QueueTrack(
                         id = queueItemId,
                         track = appMediaItem,

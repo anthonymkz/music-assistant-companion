@@ -3,8 +3,19 @@ package io.music_assistant.client.utils
 import androidx.compose.ui.Modifier
 import io.music_assistant.client.api.Answer
 import kotlin.time.Duration
+import kotlin.time.DurationUnit
+import kotlin.time.toDuration
 
-fun Duration?.toMinSec() =
+/**
+ * Formats duration in seconds to MM:SS or HH:MM:SS format
+ */
+fun Float?.formatDuration(unit: DurationUnit): String =
+    this?.toDouble().formatDuration(unit)
+
+fun Double?.formatDuration(unit: DurationUnit): String =
+    this?.toDuration(unit).formatDuration()
+
+fun Duration?.formatDuration() =
     this?.let {
         it.inWholeMinutes.toString() +
                 ":" +

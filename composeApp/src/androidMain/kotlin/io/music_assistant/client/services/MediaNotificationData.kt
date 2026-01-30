@@ -25,7 +25,7 @@ data class MediaNotificationData(
                 longItemId = playerData.queueInfo?.currentItem?.track?.longId,
                 name = playerData.queueInfo?.currentItem?.track?.name,
                 artist = playerData.queueInfo?.currentItem?.track?.subtitle,
-                album = playerData.queueInfo?.currentItem?.track?.album?.name,
+                album = playerData.queueInfo?.currentItem?.track?.parentName,
                 repeatMode = playerData.queueInfo?.repeatMode,
                 shuffleEnabled = playerData.queueInfo?.shuffleEnabled,
                 isPlaying = playerData.player.isPlaying,

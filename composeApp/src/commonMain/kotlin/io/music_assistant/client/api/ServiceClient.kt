@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.resume
@@ -100,7 +101,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
             is SessionState.Reconnecting -> {
                 // Don't change state during reconnection - stay in Reconnecting!
                 // This prevents MainDataSource from calling stopSendspin()
-                Logger.withTag("ServiceClient").i { "🔄 RECONNECT ATTEMPT - staying in Reconnecting state (no stopSendspin!)" }
+                Logger.withTag("ServiceClient")
+                    .i { "🔄 RECONNECT ATTEMPT - staying in Reconnecting state (no stopSendspin!)" }
                 launch {
                     try {
                         if (connection.isTls) {
@@ -417,7 +419,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                 return
             }
             if (state is SessionState.Connected) {
-                Logger.withTag("ServiceClient").w { "Connection lost: ${e.message}. Will auto-reconnect..." }
+                Logger.withTag("ServiceClient")
+                    .w { "Connection lost: ${e.message}. Will auto-reconnect..." }
                 val connectionInfo = state.connectionInfo
                 val serverInfo = state.serverInfo
                 val user = state.user
@@ -448,7 +451,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                         else -> 10000L
                     }
 
-                    Logger.withTag("ServiceClient").i { "Reconnect attempt ${reconnectAttempt + 1}/$maxAttempts in ${delay}ms" }
+                    Logger.withTag("ServiceClient")
+                        .i { "Reconnect attempt ${reconnectAttempt + 1}/$maxAttempts in ${delay}ms" }
                     kotlinx.coroutines.delay(delay)
 
                     _sessionState.update {
@@ -470,9 +474,11 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                         // If connect() succeeds, it will set state to Connected
                         return
                     } catch (reconnectError: Exception) {
-                        Logger.withTag("ServiceClient").w { "Reconnect attempt $reconnectAttempt failed: ${reconnectError.message}" }
+                        Logger.withTag("ServiceClient")
+                            .w { "Reconnect attempt $reconnectAttempt failed: ${reconnectError.message}" }
                         if (reconnectAttempt >= maxAttempts) {
-                            Logger.withTag("ServiceClient").e { "Max reconnect attempts reached, giving up" }
+                            Logger.withTag("ServiceClient")
+                                .e { "Max reconnect attempts reached, giving up" }
                             disconnect(SessionState.Disconnected.Error(Exception("Failed to reconnect after $maxAttempts attempts")))
                             return
                         }
@@ -487,6 +493,16 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
             if (response.json.contains("error_code")) {
                 Logger.withTag("ServiceClient")
                     .e { "Error response for command ${request.command}: $response" }
+                if (response.json["error_code"]?.jsonPrimitive?.int == 20) {
+                    (_sessionState.value as? SessionState.Connected)?.let { state ->
+                        _sessionState.update {
+                            state.copy(
+                                user = null,
+                                authProcessState = AuthProcessState.NotStarted
+                            )
+                        }
+                    }
+                }
             }
             continuation.resume(Result.success(response))
         }

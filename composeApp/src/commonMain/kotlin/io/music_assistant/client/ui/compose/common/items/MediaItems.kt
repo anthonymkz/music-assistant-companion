@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import io.music_assistant.client.data.model.client.AppMediaItem
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.ui.compose.common.painters.VinylRecordPainter
 import io.music_assistant.client.ui.compose.common.painters.WaveformPainter
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
@@ -55,9 +56,9 @@ import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderP
 @Composable
 fun MediaItemTrack(
     modifier: Modifier = Modifier,
-    item: AppMediaItem.Track,
+    item: PlayableItem,
     serverUrl: String?,
-    onClick: (AppMediaItem.Track) -> Unit,
+    onClick: (PlayableItem) -> Unit,
     itemSize: Dp = 96.dp,
     showSubtitle: Boolean = true,
     providerIconFetcher: (@Composable (Modifier, String) -> Unit)?
@@ -68,10 +69,12 @@ fun MediaItemTrack(
     ) {
         Box {
             TrackImage(itemSize, item, serverUrl)
-            Badges(
-                item = item,
-                providerIconFetcher = providerIconFetcher
-            )
+            (item as? AppMediaItem)?.let {
+                Badges(
+                    item = it,
+                    providerIconFetcher = providerIconFetcher
+                )
+            }
         }
         Spacer(Modifier.height(4.dp))
         Text(
@@ -99,7 +102,7 @@ fun MediaItemTrack(
 @Composable
 fun TrackImage(
     itemSize: Dp,
-    item: AppMediaItem.Track,
+    item: PlayableItem,
     serverUrl: String?,
 ) {
     val primary = MaterialTheme.colorScheme.primary
@@ -407,6 +410,175 @@ fun PlaylistImage(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
+    }
+}
+
+@Composable
+fun MediaItemPodcast(
+    modifier: Modifier = Modifier,
+    item: AppMediaItem.Podcast,
+    serverUrl: String?,
+    onClick: (AppMediaItem.Podcast) -> Unit,
+    itemSize: Dp = 96.dp,
+    showSubtitle: Boolean = true,
+    providerIconFetcher: (@Composable (Modifier, String) -> Unit)? = null
+) {
+    MediaItemWrapper(
+        modifier = modifier,
+        onClick = { onClick(item) }
+    ) {
+        Box {
+            PodcastImage(itemSize, item, serverUrl)
+            Badges(
+                item = item,
+                providerIconFetcher = providerIconFetcher
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            modifier = Modifier.width(itemSize),
+            text = item.name,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+        if (showSubtitle) {
+            Text(
+                modifier = Modifier.width(itemSize),
+                text = item.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+fun PodcastImage(
+    itemSize: Dp,
+    item: AppMediaItem.Podcast,
+    serverUrl: String?
+) {
+    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+    val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
+    Box(
+        modifier = Modifier
+            .size(itemSize)
+            .clip(RoundedCornerShape(8.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        val placeholder = rememberPlaceholderPainter(
+            backgroundColor = primaryContainer,
+            iconColor = onPrimaryContainer,
+            icon = Icons.Default.Mic
+        )
+        AsyncImage(
+            placeholder = placeholder,
+            fallback = placeholder,
+            model = item.imageInfo?.url(serverUrl),
+            contentDescription = item.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+fun MediaItemPodcastEpisode(
+    modifier: Modifier = Modifier,
+    item: PlayableItem,
+    serverUrl: String?,
+    onClick: (PlayableItem) -> Unit,
+    itemSize: Dp = 96.dp,
+    showSubtitle: Boolean = true,
+    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?
+) {
+    MediaItemWrapper(
+        modifier = modifier,
+        onClick = { onClick(item) }
+    ) {
+        Box {
+            PodcastEpisodeImage(itemSize, item, serverUrl)
+            (item as? AppMediaItem)?.let {
+                Badges(
+                    item = item,
+                    providerIconFetcher = providerIconFetcher
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = item.name,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.width(itemSize),
+            textAlign = TextAlign.Center,
+        )
+        if (showSubtitle) {
+            Text(
+                text = item.subtitle.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(itemSize),
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+fun PodcastEpisodeImage(
+    itemSize: Dp,
+    item: PlayableItem,
+    serverUrl: String?,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+    val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
+    Box(
+        modifier = Modifier
+            .size(itemSize)
+            .clip(RoundedCornerShape(8.dp))
+            .background(primaryContainer)
+    ) {
+        val placeholder = rememberPlaceholderPainter(
+            backgroundColor = primaryContainer,
+            iconColor = onPrimaryContainer,
+            icon = Icons.Default.MusicNote
+        )
+        AsyncImage(
+            placeholder = placeholder,
+            fallback = placeholder,
+            model = item.imageInfo?.url(serverUrl),
+            contentDescription = item.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // Draw waveform overlay at the bottom (similar to tracks)
+        val waveformPainter = remember(onPrimaryContainer) {
+            WaveformPainter(
+                waveColor = primary,
+                thickness = 3f
+            )
+        }
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(20.dp)
+                .align(Alignment.BottomCenter)
+        ) {
+            with(waveformPainter) {
+                draw(size)
+            }
+        }
     }
 }
 

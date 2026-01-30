@@ -21,13 +21,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.music_assistant.client.data.model.client.AppMediaItem
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.QueueOption
+import io.music_assistant.client.ui.compose.common.items.EpisodeWithMenu
 import io.music_assistant.client.ui.compose.common.items.MediaItemAlbum
 import io.music_assistant.client.ui.compose.common.items.MediaItemArtist
 import io.music_assistant.client.ui.compose.common.items.MediaItemPlaylist
-import io.music_assistant.client.ui.compose.common.items.TrackItemWithMenu
+import io.music_assistant.client.ui.compose.common.items.MediaItemPodcast
+import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
-import kotlinx.coroutines.launch
 
 @Composable
 fun AdaptiveMediaGrid(
@@ -37,7 +39,7 @@ fun AdaptiveMediaGrid(
     isLoadingMore: Boolean = false,
     hasMore: Boolean = true,
     onItemClick: (AppMediaItem) -> Unit,
-    onTrackClick: ((AppMediaItem.Track, QueueOption) -> Unit),
+    onTrackClick: ((PlayableItem, QueueOption) -> Unit),
     onLoadMore: () -> Unit = {},
     gridState: LazyGridState = rememberLazyGridState(),
     playlistActions: ActionsViewModel.PlaylistActions,
@@ -71,17 +73,16 @@ fun AdaptiveMediaGrid(
     ) {
         items(items, key = { it.itemId }) { item ->
             when (item) {
-                is AppMediaItem.Track -> {
-                    TrackItemWithMenu(
+                is AppMediaItem.Track -> TrackWithMenu(
                         item = item,
                         serverUrl = serverUrl,
                         onTrackPlayOption = onTrackClick,
-                        onItemClick = { onItemClick(it) },
+                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
                         playlistActions = playlistActions,
                         libraryActions = libraryActions,
                         providerIconFetcher = null
                     )
-                }
+
 
                 is AppMediaItem.Artist -> MediaItemArtist(
                     item = item,
@@ -101,6 +102,23 @@ fun AdaptiveMediaGrid(
                     item = item,
                     serverUrl = serverUrl,
                     onClick = { onItemClick(it) },
+                    providerIconFetcher = null
+                )
+
+                is AppMediaItem.Podcast -> MediaItemPodcast(
+                    item = item,
+                    serverUrl = serverUrl,
+                    onClick = { onItemClick(it) },
+                    providerIconFetcher = null
+                )
+
+                is AppMediaItem.PodcastEpisode -> EpisodeWithMenu(
+                    item = item,
+                    serverUrl = serverUrl,
+                    onTrackPlayOption = onTrackClick,
+                    onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                    playlistActions = playlistActions,
+                    libraryActions = libraryActions,
                     providerIconFetcher = null
                 )
 

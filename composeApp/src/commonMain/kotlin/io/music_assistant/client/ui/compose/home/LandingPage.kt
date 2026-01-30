@@ -42,17 +42,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.music_assistant.client.data.model.client.AppMediaItem
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.MediaType
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.ui.compose.common.DataState
+import io.music_assistant.client.ui.compose.common.items.EpisodeWithMenu
 import io.music_assistant.client.ui.compose.common.items.MediaItemAlbum
 import io.music_assistant.client.ui.compose.common.items.MediaItemArtist
 import io.music_assistant.client.ui.compose.common.items.MediaItemPlaylist
-import io.music_assistant.client.ui.compose.common.items.TrackItemWithMenu
+import io.music_assistant.client.ui.compose.common.items.MediaItemPodcast
+import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
 import io.music_assistant.client.utils.SessionState
-import kotlinx.coroutines.launch
 
 @Composable
 fun LandingPage(
@@ -61,7 +63,7 @@ fun LandingPage(
     dataState: DataState<List<AppMediaItem.RecommendationFolder>>,
     serverUrl: String?,
     onItemClick: (AppMediaItem) -> Unit,
-    onTrackPlayOption: ((AppMediaItem.Track, QueueOption) -> Unit),
+    onTrackPlayOption: ((PlayableItem, QueueOption) -> Unit),
     onLibraryItemClick: (MediaType?) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
@@ -75,6 +77,8 @@ fun LandingPage(
                             || item is AppMediaItem.Artist
                             || item is AppMediaItem.Album
                             || item is AppMediaItem.Playlist
+                            || item is AppMediaItem.Podcast
+                            || item is AppMediaItem.PodcastEpisode
                 } == true
             }
         } else {
@@ -139,6 +143,7 @@ fun LibraryRow(
                 Icons.AutoMirrored.Filled.FeaturedPlayList,
                 MediaType.PLAYLIST
             ),
+            LibraryItem("Podcasts", Icons.Default.Mic, MediaType.PODCAST),
             LibraryItem("Global search", Icons.Default.Search, null),
         )
     }
@@ -242,7 +247,7 @@ fun CategoryRow(
     serverUrl: String?,
     row: AppMediaItem.RecommendationFolder,
     onItemClick: (AppMediaItem) -> Unit,
-    onTrackPlayOption: ((AppMediaItem.Track, QueueOption) -> Unit),
+    onTrackPlayOption: ((PlayableItem, QueueOption) -> Unit),
     onAllClick: () -> Unit,
     mediaItems: List<AppMediaItem>,
     playlistActions: ActionsViewModel.PlaylistActions,
@@ -287,10 +292,13 @@ fun CategoryRow(
                 items = mediaItems,
                 key = { item ->
                     when (item) {
-                        is AppMediaItem.Track -> "track_${item.itemId}"
-                        is AppMediaItem.Artist -> "artist_${item.itemId}"
-                        is AppMediaItem.Album -> "album_${item.itemId}"
-                        is AppMediaItem.Playlist -> "playlist_${item.itemId}"
+                        is AppMediaItem.Track,
+                        is AppMediaItem.Artist,
+                        is AppMediaItem.Album,
+                        is AppMediaItem.Playlist,
+                        is AppMediaItem.Podcast,
+                        is AppMediaItem.PodcastEpisode -> "${item::class.simpleName}_${item.itemId}"
+
                         else -> item.hashCode()
                     }
                 },
@@ -300,23 +308,24 @@ fun CategoryRow(
                         is AppMediaItem.Artist -> "Artist"
                         is AppMediaItem.Album -> "Album"
                         is AppMediaItem.Playlist -> "Playlist"
+                        is AppMediaItem.Podcast -> "Podcast"
+                        is AppMediaItem.PodcastEpisode -> "Episode"
                         else -> "Unknown"
                     }
                 }
             ) { item ->
                 when (item) {
-                    is AppMediaItem.Track -> {
-                        TrackItemWithMenu(
-                            item = item,
-                            serverUrl = serverUrl,
-                            itemSize = 96.dp,
-                            onTrackPlayOption = onTrackPlayOption,
-                            onItemClick = { onItemClick(it) },
-                            playlistActions = playlistActions,
-                            libraryActions = libraryActions,
-                            providerIconFetcher = providerIconFetcher
-                        )
-                    }
+                    is AppMediaItem.Track -> TrackWithMenu(
+                        item = item,
+                        serverUrl = serverUrl,
+                        itemSize = 96.dp,
+                        onTrackPlayOption = onTrackPlayOption,
+                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                        playlistActions = playlistActions,
+                        libraryActions = libraryActions,
+                        providerIconFetcher = providerIconFetcher
+                    )
+
 
                     is AppMediaItem.Artist -> MediaItemArtist(
                         item = item,
@@ -344,6 +353,27 @@ fun CategoryRow(
                         providerIconFetcher = providerIconFetcher
                     )
 
+                    is AppMediaItem.Podcast -> MediaItemPodcast(
+                        item = item,
+                        serverUrl = serverUrl,
+                        onClick = { onItemClick(it) },
+                        itemSize = 96.dp,
+                        showSubtitle = !isHomogenous,
+                        providerIconFetcher = providerIconFetcher
+                    )
+
+                    is AppMediaItem.PodcastEpisode -> EpisodeWithMenu(
+                        item = item,
+                        serverUrl = serverUrl,
+                        itemSize = 96.dp,
+                        onTrackPlayOption = onTrackPlayOption,
+                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                        playlistActions = playlistActions,
+                        libraryActions = libraryActions,
+                        providerIconFetcher = providerIconFetcher
+                    )
+
+
                     else -> {}
                 }
             }
@@ -356,6 +386,7 @@ fun allItemsTitle(type: MediaType) = when (type) {
     MediaType.ALBUM -> "All albums"
     MediaType.ARTIST -> "All artists"
     MediaType.PLAYLIST -> "All playlists"
+    MediaType.PODCAST -> "All podcasts"
     else -> null
 }
 

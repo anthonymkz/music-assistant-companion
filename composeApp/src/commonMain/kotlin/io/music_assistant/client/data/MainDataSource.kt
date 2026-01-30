@@ -5,7 +5,6 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.ui.graphics.Color
 import co.touchlab.kermit.Logger
 import io.ktor.http.Url
-import io.music_assistant.client.utils.currentTimeMillis
 import io.music_assistant.client.api.Request
 import io.music_assistant.client.api.ServiceClient
 import io.music_assistant.client.data.model.client.AppMediaItem
@@ -43,6 +42,7 @@ import io.music_assistant.client.ui.compose.common.action.QueueAction
 import io.music_assistant.client.ui.compose.common.providers.ProviderIconModel
 import io.music_assistant.client.utils.DataConnectionState
 import io.music_assistant.client.utils.SessionState
+import io.music_assistant.client.utils.currentTimeMillis
 import io.music_assistant.client.utils.resultAs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -367,7 +367,11 @@ class MainDataSource(
             localPlayer.value?.let { playerData ->
                 log.i { "Remote command from Control Center: $command" }
                 when (command) {
-                    "play", "pause", "toggle_play_pause" -> playerAction(playerData, PlayerAction.TogglePlayPause)
+                    "play", "pause", "toggle_play_pause" -> playerAction(
+                        playerData,
+                        PlayerAction.TogglePlayPause
+                    )
+
                     "next" -> playerAction(playerData, PlayerAction.Next)
                     "previous" -> playerAction(playerData, PlayerAction.Previous)
                     else -> {
@@ -888,9 +892,8 @@ class MainDataSource(
                                                 currentState.data.map { playerData ->
                                                     playerData.queueItems?.let { items ->
                                                         val updatedItems = items.filter {
-                                                            !it.track.hasAnyMappingFrom(
-                                                                deletedTrack
-                                                            )
+                                                            (it.track as? AppMediaItem)
+                                                                ?.hasAnyMappingFrom(deletedTrack) != true
                                                         }
                                                         playerData.copy(
                                                             queue = (playerData.queue as? DataState.Data)?.let { queueData ->
@@ -926,7 +929,7 @@ class MainDataSource(
                     currentState.data.map { playerData ->
                         playerData.queueItems?.let { items ->
                             val updatedItems = items.map { queueTrack ->
-                                if (queueTrack.track.hasAnyMappingFrom(newTrack)) {
+                                if ((queueTrack.track as? AppMediaItem)?.hasAnyMappingFrom(newTrack) == true) {
                                     queueTrack.copy(
                                         track = newTrack
                                     )
@@ -936,7 +939,7 @@ class MainDataSource(
                                 queue = (playerData.queue as? DataState.Data)?.let { queueData ->
                                     DataState.Data(
                                         queueData.data.copy(
-                                            info = if (queueData.data.info.currentItem?.track
+                                            info = if ((queueData.data.info.currentItem?.track as? AppMediaItem)
                                                     ?.hasAnyMappingFrom(newTrack) == true
                                             ) {
                                                 queueData.data.info.copy(
@@ -944,7 +947,7 @@ class MainDataSource(
                                                         track = newTrack
                                                             .takeIf {
                                                                 it.hasAnyMappingFrom(
-                                                                    queueData.data.info.currentItem.track
+                                                                    queueData.data.info.currentItem.track as AppMediaItem
                                                                 )
                                                             }
                                                             ?: queueData.data.info.currentItem.track

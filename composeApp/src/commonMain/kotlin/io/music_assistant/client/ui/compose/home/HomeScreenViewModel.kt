@@ -9,6 +9,7 @@ import io.music_assistant.client.data.MainDataSource
 import io.music_assistant.client.data.model.client.AppMediaItem
 import io.music_assistant.client.data.model.client.AppMediaItem.Companion.toAppMediaItem
 import io.music_assistant.client.data.model.client.AppMediaItem.Companion.toAppMediaItemList
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.client.Player
 import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.data.model.server.QueueOption
@@ -164,13 +165,13 @@ class HomeScreenViewModel(
         }
     }
 
-    fun onRecommendationItemClicked(mediaItem: AppMediaItem) {
+    fun onRecommendationItemClicked(mediaItem: PlayableItem) {
         dataSource.selectedPlayer?.queueOrPlayerId?.let {
             playItem(mediaItem, it, QueueOption.PLAY)
         }
     }
 
-    fun onTrackPlayOption(track: AppMediaItem.Track, option: QueueOption) {
+    fun onTrackPlayOption(track: PlayableItem, option: QueueOption) {
         dataSource.selectedPlayer?.queueOrPlayerId?.let {
             playItem(track, it, option)
         }
@@ -261,7 +262,7 @@ class HomeScreenViewModel(
 
     private fun onOpenExternalLink(url: String) = viewModelScope.launch { _links.emit(url) }
 
-    private fun playItem(item: AppMediaItem, queueOrPlayerId: String, option: QueueOption) {
+    private fun playItem(item: PlayableItem, queueOrPlayerId: String, option: QueueOption) {
         item.uri?.let {
             viewModelScope.launch {
                 apiClient.sendRequest(

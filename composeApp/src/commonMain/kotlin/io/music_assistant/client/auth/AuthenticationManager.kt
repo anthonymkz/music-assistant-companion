@@ -13,8 +13,6 @@ import io.music_assistant.client.utils.SessionState
 import io.music_assistant.client.utils.mainDispatcher
 import io.music_assistant.client.utils.resultAs
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay

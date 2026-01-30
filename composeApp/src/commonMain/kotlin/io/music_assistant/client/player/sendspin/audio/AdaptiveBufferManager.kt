@@ -3,7 +3,6 @@ package io.music_assistant.client.player.sendspin.audio
 import co.touchlab.kermit.Logger
 import io.music_assistant.client.player.sendspin.ClockSynchronizer
 import io.music_assistant.client.player.sendspin.SyncQuality
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.sqrt
 

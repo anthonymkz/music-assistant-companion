@@ -36,6 +36,7 @@ import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.music_assistant.client.data.model.client.AppMediaItem
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.MediaType
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.ui.compose.common.DataState
@@ -44,11 +45,11 @@ import io.music_assistant.client.ui.compose.common.ToastState
 import io.music_assistant.client.ui.compose.common.items.MediaItemAlbum
 import io.music_assistant.client.ui.compose.common.items.MediaItemArtist
 import io.music_assistant.client.ui.compose.common.items.MediaItemPlaylist
-import io.music_assistant.client.ui.compose.common.items.TrackItemWithMenu
+import io.music_assistant.client.ui.compose.common.items.MediaItemPodcast
+import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.providers.ProviderIcon
 import io.music_assistant.client.ui.compose.common.rememberToastState
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
-import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -114,7 +115,7 @@ private fun SearchContent(
     onMediaTypeToggled: (MediaType, Boolean) -> Unit,
     onLibraryOnlyToggled: (Boolean) -> Unit,
     onItemClick: (AppMediaItem) -> Unit,
-    onTrackClick: (AppMediaItem.Track, QueueOption) -> Unit,
+    onTrackClick: (PlayableItem, QueueOption) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
     providerIconFetcher: (@Composable (Modifier, String) -> Unit),
@@ -178,7 +179,8 @@ private fun SearchContent(
                     val hasResults = results.artists.isNotEmpty() ||
                             results.albums.isNotEmpty() ||
                             results.tracks.isNotEmpty() ||
-                            results.playlists.isNotEmpty()
+                            results.playlists.isNotEmpty() ||
+                            results.podcasts.isNotEmpty()
 
                     if (!hasResults) {
                         Box(
@@ -201,7 +203,7 @@ private fun SearchContent(
                                     SectionHeader("Tracks")
                                 }
                                 items(results.tracks) { track ->
-                                    TrackItemWithMenu(
+                                    TrackWithMenu(
                                         item = track,
                                         serverUrl = serverUrl,
                                         onTrackPlayOption = onTrackClick,
@@ -256,6 +258,21 @@ private fun SearchContent(
                                     )
                                 }
                             }
+
+                            // Podcasts section
+                            if (results.podcasts.isNotEmpty()) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    SectionHeader("Podcasts")
+                                }
+                                items(results.podcasts) { podcast ->
+                                    MediaItemPodcast(
+                                        item = podcast,
+                                        serverUrl = serverUrl,
+                                        onClick = { onItemClick(it) },
+                                        providerIconFetcher = providerIconFetcher,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -304,7 +321,10 @@ private fun SearchFilters(
                     )
                 },
                 label = {
-                    Text(mediaTypeSelect.type.name.lowercase().capitalize(Locale.current))
+                    Text(
+                        text = mediaTypeSelect.type.name.lowercase().capitalize(Locale.current),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             )
         }
@@ -314,7 +334,7 @@ private fun SearchFilters(
             selected = searchState.libraryOnly,
             onClick = { onLibraryOnlyToggled(!searchState.libraryOnly) },
             label = {
-                Text("In library only")
+                Text(text = "In library only", style = MaterialTheme.typography.bodySmall)
             }
         )
     }

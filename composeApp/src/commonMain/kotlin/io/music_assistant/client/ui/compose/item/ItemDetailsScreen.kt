@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.music_assistant.client.data.model.client.AppMediaItem
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.MediaType
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.ui.compose.common.DataState
@@ -58,7 +59,8 @@ import io.music_assistant.client.ui.compose.common.items.ArtistImage
 import io.music_assistant.client.ui.compose.common.items.Badges
 import io.music_assistant.client.ui.compose.common.items.MediaItemAlbum
 import io.music_assistant.client.ui.compose.common.items.PlaylistImage
-import io.music_assistant.client.ui.compose.common.items.TrackItemWithMenu
+import io.music_assistant.client.ui.compose.common.items.PodcastImage
+import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.providers.ProviderIcon
 import io.music_assistant.client.ui.compose.common.rememberToastState
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
@@ -100,7 +102,8 @@ fun ItemDetailsScreen(
             when (item) {
                 is AppMediaItem.Artist,
                 is AppMediaItem.Album,
-                is AppMediaItem.Playlist -> {
+                is AppMediaItem.Playlist,
+                is AppMediaItem.Podcast -> {
                     onNavigateToItem(item.itemId, item.mediaType, item.provider)
                 }
 
@@ -138,7 +141,7 @@ private fun ItemDetailsContent(
     onBack: () -> Unit,
     onPlayClick: (QueueOption) -> Unit,
     onSubItemClick: (AppMediaItem) -> Unit,
-    onTrackClick: (AppMediaItem.Track, QueueOption) -> Unit,
+    onTrackClick: (PlayableItem, QueueOption) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     onRemoveFromPlaylist: (String, Int) -> Unit,
     libraryActions: ActionsViewModel.LibraryActions,
@@ -228,11 +231,16 @@ private fun ItemDetailsContent(
                         is DataState.Data -> {
                             if (tracksState.data.isNotEmpty()) {
                                 item(span = { GridItemSpan(maxLineSpan) }) {
-                                    SectionHeader("Tracks")
+                                    SectionHeader(
+                                        when (item) {
+                                            is AppMediaItem.Podcast -> "Episodes"
+                                            else -> "Tracks"
+                                        }
+                                    )
                                 }
                                 tracksState.data.forEachIndexed { index, track ->
                                     item {
-                                        TrackItemWithMenu(
+                                        TrackWithMenu(
                                             item = track,
                                             serverUrl = serverUrl,
                                             onTrackPlayOption = onTrackClick,
@@ -317,6 +325,7 @@ private fun HeaderSection(
                 is AppMediaItem.Artist -> ArtistImage(128.dp, item, serverUrl)
                 is AppMediaItem.Album -> AlbumImage(128.dp, item, serverUrl)
                 is AppMediaItem.Playlist -> PlaylistImage(128.dp, item, serverUrl)
+                is AppMediaItem.Podcast -> PodcastImage(128.dp, item, serverUrl)
                 else -> Unit
             }
             Badges(

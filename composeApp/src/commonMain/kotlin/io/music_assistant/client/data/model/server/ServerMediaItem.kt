@@ -37,6 +37,8 @@ data class ServerMediaItem(
     @SerialName("album") val album: ServerMediaItem? = null,
     //@SerialName("disc_number") val discNumber: Int? = null,
     //@SerialName("track_number") val trackNumber: Int? = null,
+    // podcast episode only
+    @SerialName("podcast") val podcast: ServerMediaItem? = null,
     // Folder only
     @SerialName("items") val items: List<ServerMediaItem>? = null,
 )

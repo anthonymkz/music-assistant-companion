@@ -55,8 +55,10 @@ import io.music_assistant.client.data.model.client.AppMediaItem.Companion.descri
 import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
+import io.music_assistant.client.utils.formatDuration
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
+import kotlin.time.Duration
+import kotlin.time.DurationUnit
 
 @Composable
 fun CompactPlayerItem(
@@ -391,12 +393,12 @@ fun FullPlayerItem(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = formatDuration(sliderPosition.takeIf { track != null }),
+                    text = sliderPosition.takeIf { track != null }.formatDuration(DurationUnit.SECONDS),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = formatDuration(duration),
+                    text = duration.formatDuration(DurationUnit.SECONDS),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -410,24 +412,6 @@ fun FullPlayerItem(
             showVolumeButtons = false,
             mainButtonSize = 64.dp
         )
-    }
-}
-
-/**
- * Formats duration in seconds to MM:SS or HH:MM:SS format
- */
-private fun formatDuration(seconds: Float?): String {
-    if (seconds == null || seconds <= 0f) return "--:--"
-
-    val totalSeconds = seconds.roundToInt()
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val secs = totalSeconds % 60
-
-    return if (hours > 0) {
-        "$hours:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}"
-    } else {
-        "$minutes:${secs.toString().padStart(2, '0')}"
     }
 }
 

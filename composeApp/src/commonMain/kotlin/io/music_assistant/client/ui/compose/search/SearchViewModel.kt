@@ -8,6 +8,7 @@ import io.music_assistant.client.data.MainDataSource
 import io.music_assistant.client.data.model.client.AppMediaItem
 import io.music_assistant.client.data.model.client.AppMediaItem.Companion.toAppMediaItem
 import io.music_assistant.client.data.model.client.AppMediaItem.Companion.toAppMediaItemList
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.MediaType
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.data.model.server.SearchResult
@@ -52,6 +53,7 @@ class SearchViewModel(
                     MediaTypeSelect(MediaType.ALBUM, false),
                     MediaTypeSelect(MediaType.TRACK, false),
                     MediaTypeSelect(MediaType.PLAYLIST, false),
+                    MediaTypeSelect(MediaType.PODCAST, false),
                 ),
                 libraryOnly = false
             ),
@@ -116,7 +118,7 @@ class SearchViewModel(
         _state.update { it.copy(searchState = it.searchState.copy(libraryOnly = libraryOnly)) }
     }
 
-    fun onTrackClick(track: AppMediaItem.Track, option: QueueOption) {
+    fun onTrackClick(track: PlayableItem, option: QueueOption) {
         viewModelScope.launch {
             val queueId = mainDataSource.selectedPlayer?.queueOrPlayerId ?: return@launch
             track.uri?.let { uri ->
@@ -168,7 +170,8 @@ class SearchViewModel(
                                 artists = items.filterIsInstance<AppMediaItem.Artist>(),
                                 albums = items.filterIsInstance<AppMediaItem.Album>(),
                                 tracks = items.filterIsInstance<AppMediaItem.Track>(),
-                                playlists = items.filterIsInstance<AppMediaItem.Playlist>()
+                                playlists = items.filterIsInstance<AppMediaItem.Playlist>(),
+                                podcasts = items.filterIsInstance<AppMediaItem.Podcast>()
                             )
                             if (isActive) {
                                 _state.update { it.copy(resultsState = DataState.Data(results)) }
@@ -203,6 +206,7 @@ class SearchViewModel(
         val artists: List<AppMediaItem.Artist>,
         val albums: List<AppMediaItem.Album>,
         val tracks: List<AppMediaItem.Track>,
-        val playlists: List<AppMediaItem.Playlist>
+        val playlists: List<AppMediaItem.Playlist>,
+        val podcasts: List<AppMediaItem.Podcast>
     )
 }

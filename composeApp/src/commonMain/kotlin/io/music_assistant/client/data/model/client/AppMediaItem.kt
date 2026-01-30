@@ -10,6 +10,22 @@ import io.music_assistant.client.data.model.server.Metadata
 import io.music_assistant.client.data.model.server.ProviderMapping
 import io.music_assistant.client.data.model.server.SearchResult
 import io.music_assistant.client.data.model.server.ServerMediaItem
+import io.music_assistant.client.utils.formatDuration
+import kotlin.time.DurationUnit
+
+interface PlayableItem {
+    val parentName: String?
+    val itemId: String
+    val name: String
+    val duration: Double?
+    val uri: String?
+    val subtitle: String?
+    val imageInfo: AppMediaItem.ImageInfo?
+    val provider: String
+    val isInLibrary: Boolean
+    val favorite: Boolean?
+    val longId: Long
+}
 
 abstract class AppMediaItem(
     val itemId: String,
@@ -222,7 +238,7 @@ abstract class AppMediaItem(
 //        timestampModified: Long?,
 //        val musicbrainzId: String?,
         //val version: String?,
-        val duration: Double?,
+        override val duration: Double?,
 //        val isrc: String?,
         val artists: List<Artist>?,
 // album track only
@@ -245,8 +261,9 @@ abstract class AppMediaItem(
         //isPlayable,
         //timestampAdded,
         //timestampModified,
-    ) {
+    ), PlayableItem {
         override val subtitle = artists?.joinToString(separator = ", ") { it.name }
+        override val parentName: String? = album?.name
     }
 
     class Playlist(
@@ -281,6 +298,55 @@ abstract class AppMediaItem(
         //timestampModified,
     ) {
         override val subtitle = "Playlist"
+    }
+
+    class Podcast(
+        itemId: String,
+        provider: String,
+        name: String,
+        providerMappings: List<ProviderMapping>?,
+        metadata: Metadata?,
+        favorite: Boolean?,
+        uri: String?,
+        image: MediaItemImage?,
+    ) : AppMediaItem(
+        itemId = itemId,
+        provider = provider,
+        name = name,
+        providerMappings = providerMappings,
+        metadata = metadata,
+        favorite = favorite,
+        mediaType = MediaType.PODCAST,
+        uri = uri,
+        image = image,
+    ) {
+        override val subtitle = "Podcast"
+    }
+
+    class PodcastEpisode(
+        itemId: String,
+        provider: String,
+        name: String,
+        providerMappings: List<ProviderMapping>?,
+        metadata: Metadata?,
+        favorite: Boolean?,
+        uri: String?,
+        image: MediaItemImage?,
+        override val duration: Double?,
+        val podcast: Podcast?,
+    ) : AppMediaItem(
+        itemId = itemId,
+        provider = provider,
+        name = name,
+        providerMappings = providerMappings,
+        metadata = metadata,
+        favorite = favorite,
+        mediaType = MediaType.PODCAST_EPISODE,
+        uri = uri,
+        image = image,
+    ), PlayableItem {
+        override val subtitle = podcast?.name
+        override val parentName: String? = podcast?.name
     }
 
     companion object {
@@ -377,10 +443,32 @@ abstract class AppMediaItem(
                     items = items?.toAppMediaItemList()
                 )
 
+                MediaType.PODCAST -> Podcast(
+                    itemId = itemId,
+                    provider = provider,
+                    name = name,
+                    providerMappings = providerMappings,
+                    metadata = metadata,
+                    favorite = favorite,
+                    uri = uri,
+                    image = image,
+                )
+
+                MediaType.PODCAST_EPISODE -> PodcastEpisode(
+                    itemId = itemId,
+                    provider = provider,
+                    name = name,
+                    providerMappings = providerMappings,
+                    metadata = metadata,
+                    favorite = favorite,
+                    uri = uri,
+                    image = image,
+                    duration = duration,
+                    podcast = podcast?.let { it.toAppMediaItem() as? Podcast },
+                )
+
                 MediaType.RADIO,
                 MediaType.AUDIOBOOK,
-                MediaType.PODCAST,
-                MediaType.PODCAST_EPISODE,
                 MediaType.FLOW_STREAM,
                 MediaType.ANNOUNCEMENT,
                 MediaType.UNKNOWN -> null
@@ -393,7 +481,8 @@ abstract class AppMediaItem(
             artists.toAppMediaItemList() +
                     albums.toAppMediaItemList() +
                     tracks.toAppMediaItemList() +
-                    playlists.toAppMediaItemList()
+                    playlists.toAppMediaItemList() +
+                    podcasts.toAppMediaItemList()
 
         val AudioFormat.description
             get() = listOfNotNull(
@@ -407,5 +496,5 @@ abstract class AppMediaItem(
         private fun ProviderMapping.toHash(): ProviderHash = ProviderHash(itemId, providerInstance)
     }
 
-// TODO Radio, audiobooks, podcasts
+// TODO Radio, audiobooks
 }

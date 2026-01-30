@@ -55,6 +55,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import io.music_assistant.client.data.model.client.AppMediaItem
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.providers.ProviderIcon
@@ -374,8 +375,8 @@ private fun HomeContent(
     connectionState: SessionState,
     dataState: DataState<List<AppMediaItem.RecommendationFolder>>,
     serverUrl: String?,
-    onRecommendationItemClick: (AppMediaItem) -> Unit,
-    onTrackPlayOption: (AppMediaItem.Track, QueueOption) -> Unit,
+    onRecommendationItemClick: (PlayableItem) -> Unit,
+    onTrackPlayOption: (PlayableItem, QueueOption) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
     providerIconFetcher: (@Composable (Modifier, String) -> Unit)
@@ -411,7 +412,8 @@ private fun HomeContent(
                         when (item) {
                             is AppMediaItem.Artist,
                             is AppMediaItem.Album,
-                            is AppMediaItem.Playlist -> {
+                            is AppMediaItem.Playlist,
+                            is AppMediaItem.Podcast -> {
                                 typedBackStack.add(
                                     HomeNavScreen.ItemDetails(
                                         itemId = item.itemId,
@@ -421,10 +423,11 @@ private fun HomeContent(
                                 )
                             }
 
-                            else -> {
+                            is PlayableItem -> {
                                 // For tracks and other types, play immediately
                                 onRecommendationItemClick(item)
                             }
+                            else -> Unit
                         }
                     },
                     onTrackPlayOption = onTrackPlayOption,
@@ -449,7 +452,8 @@ private fun HomeContent(
                         when (item) {
                             is AppMediaItem.Artist,
                             is AppMediaItem.Album,
-                            is AppMediaItem.Playlist -> {
+                            is AppMediaItem.Playlist,
+                            is AppMediaItem.Podcast -> {
                                 typedBackStack.add(
                                     HomeNavScreen.ItemDetails(
                                         itemId = item.itemId,

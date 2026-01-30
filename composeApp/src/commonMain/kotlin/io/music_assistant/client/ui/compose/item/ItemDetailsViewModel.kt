@@ -9,6 +9,7 @@ import io.music_assistant.client.data.MainDataSource
 import io.music_assistant.client.data.model.client.AppMediaItem
 import io.music_assistant.client.data.model.client.AppMediaItem.Companion.toAppMediaItem
 import io.music_assistant.client.data.model.client.AppMediaItem.Companion.toAppMediaItemList
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.MediaType
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.data.model.server.ServerMediaItem
@@ -35,7 +36,7 @@ class ItemDetailsViewModel(
         val connectionState: SessionState,
         val itemState: DataState<AppMediaItem>,
         val albumsState: DataState<List<AppMediaItem.Album>>,
-        val tracksState: DataState<List<AppMediaItem.Track>>,
+        val tracksState: DataState<List<PlayableItem>>,
     )
 
     private val connectionState = apiClient.sessionState
@@ -158,6 +159,7 @@ class ItemDetailsViewModel(
             MediaType.ARTIST -> Request.Artist.get(itemId, providerId)
             MediaType.ALBUM -> Request.Album.get(itemId, providerId)
             MediaType.PLAYLIST -> Request.Playlist.get(itemId, providerId)
+            MediaType.PODCAST -> Request.Podcast.get(itemId, providerId)
             else -> return null
         }
 
@@ -182,6 +184,11 @@ class ItemDetailsViewModel(
             is AppMediaItem.Playlist -> {
                 _state.update { it.copy(albumsState = DataState.NoData()) }
                 loadPlaylistTracks(item.itemId, item.provider)
+            }
+
+            is AppMediaItem.Podcast -> {
+                _state.update { it.copy(albumsState = DataState.NoData()) }
+                loadPodcastEpisodes(item.itemId, item.provider)
             }
 
             else -> {
@@ -291,6 +298,30 @@ class ItemDetailsViewModel(
         }
     }
 
+    private fun loadPodcastEpisodes(itemId: String, provider: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(tracksState = DataState.Loading()) }
+
+            try {
+                val episodes = apiClient.sendRequest(
+                    Request.Podcast.getEpisodes(
+                        itemId = itemId,
+                        providerInstanceIdOrDomain = provider,
+                        inLibraryOnly = false
+                    )
+                ).resultAs<List<ServerMediaItem>>()
+                    ?.toAppMediaItemList()
+                    ?.filterIsInstance<AppMediaItem.PodcastEpisode>()
+                    ?: emptyList()
+
+                _state.update { it.copy(tracksState = DataState.Data(episodes)) }
+            } catch (e: Exception) {
+                Logger.e("Failed to load podcast episodes", e)
+                _state.update { it.copy(tracksState = DataState.Error()) }
+            }
+        }
+    }
+
     fun onPlayClick(option: QueueOption) {
         viewModelScope.launch {
             val item = (_state.value.itemState as? DataState.Data)?.data ?: return@launch
@@ -309,7 +340,7 @@ class ItemDetailsViewModel(
         }
     }
 
-    fun onTrackClick(track: AppMediaItem.Track, option: QueueOption) {
+    fun onTrackClick(track: PlayableItem, option: QueueOption) {
         viewModelScope.launch {
             val queueId = mainDataSource.selectedPlayer?.queueOrPlayerId ?: return@launch
 

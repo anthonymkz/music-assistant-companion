@@ -22,9 +22,86 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.music_assistant.client.data.model.client.AppMediaItem
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
 import kotlinx.coroutines.launch
+
+@Composable
+fun TrackWithMenu(
+    modifier: Modifier = Modifier,
+    item: PlayableItem,
+    itemSize: Dp = 96.dp,
+    onTrackPlayOption: ((PlayableItem, QueueOption) -> Unit),
+    onItemClick: ((PlayableItem) -> Unit)? = null,
+    playlistActions: ActionsViewModel.PlaylistActions? = null,
+    onRemoveFromPlaylist: (() -> Unit)? = null,
+    libraryActions: ActionsViewModel.LibraryActions,
+    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    serverUrl: String?,
+) {
+    PlayableItemWithMenu(
+        modifier = modifier,
+        item = item,
+        itemSize = itemSize,
+        onTrackPlayOption = onTrackPlayOption,
+        onItemClick = onItemClick,
+        playlistActions = playlistActions,
+        onRemoveFromPlaylist = onRemoveFromPlaylist,
+        libraryActions = libraryActions,
+        providerIconFetcher = providerIconFetcher,
+        serverUrl = serverUrl,
+        itemComposable = { mod, itm, srvUrl, onClick, size, showSubtitle, iconFetcher ->
+            MediaItemTrack(
+                modifier = mod,
+                item = itm,
+                serverUrl = srvUrl,
+                onClick = onClick,
+                itemSize = size,
+                showSubtitle = showSubtitle,
+                providerIconFetcher = iconFetcher
+            )
+        }
+    )
+}
+
+@Composable
+fun EpisodeWithMenu(
+    modifier: Modifier = Modifier,
+    item: PlayableItem,
+    itemSize: Dp = 96.dp,
+    onTrackPlayOption: ((PlayableItem, QueueOption) -> Unit),
+    onItemClick: ((PlayableItem) -> Unit)? = null,
+    playlistActions: ActionsViewModel.PlaylistActions? = null,
+    onRemoveFromPlaylist: (() -> Unit)? = null,
+    libraryActions: ActionsViewModel.LibraryActions,
+    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    serverUrl: String?,
+) {
+    PlayableItemWithMenu(
+        modifier = modifier,
+        item = item,
+        itemSize = itemSize,
+        onTrackPlayOption = onTrackPlayOption,
+        onItemClick = onItemClick,
+        playlistActions = playlistActions,
+        onRemoveFromPlaylist = onRemoveFromPlaylist,
+        libraryActions = libraryActions,
+        providerIconFetcher = providerIconFetcher,
+        serverUrl = serverUrl,
+        itemComposable = { mod, itm, srvUrl, onClick, size, showSubtitle, iconFetcher ->
+            MediaItemPodcastEpisode(
+                modifier = mod,
+                item = itm,
+                serverUrl = srvUrl,
+                onClick = onClick,
+                itemSize = size,
+                showSubtitle = showSubtitle,
+                providerIconFetcher = iconFetcher
+            )
+        }
+    )
+}
 
 /**
  * A reusable composable that displays a track item with a dropdown menu for queue actions.
@@ -32,17 +109,26 @@ import kotlinx.coroutines.launch
  * Otherwise, it behaves as a simple clickable track item.
  */
 @Composable
-fun TrackItemWithMenu(
+fun PlayableItemWithMenu(
     modifier: Modifier = Modifier,
-    item: AppMediaItem.Track,
+    item: PlayableItem,
     itemSize: Dp = 96.dp,
-    onTrackPlayOption: ((AppMediaItem.Track, QueueOption) -> Unit),
-    onItemClick: ((AppMediaItem.Track) -> Unit)? = null,
+    onTrackPlayOption: ((PlayableItem, QueueOption) -> Unit),
+    onItemClick: ((PlayableItem) -> Unit)? = null,
     playlistActions: ActionsViewModel.PlaylistActions? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
     libraryActions: ActionsViewModel.LibraryActions,
     providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
-    serverUrl: String?
+    serverUrl: String?,
+    itemComposable: @Composable (
+        modifier: Modifier,
+        item: PlayableItem,
+        serverUrl: String?,
+        onClick: (PlayableItem) -> Unit,
+        itemSize: Dp,
+        showSubtitle: Boolean,
+        providerIconFetcher: (@Composable (Modifier, String) -> Unit)?
+    ) -> Unit
 ) {
     var expandedTrackId by remember { mutableStateOf<String?>(null) }
     var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
@@ -50,13 +136,14 @@ fun TrackItemWithMenu(
     var isLoadingPlaylists by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     Box(modifier = modifier) {
-        MediaItemTrack(
-            modifier = Modifier.align(Alignment.Center),
-            item = item,
-            serverUrl = serverUrl,
-            onClick = { expandedTrackId = item.itemId },
-            itemSize = itemSize,
-            providerIconFetcher = providerIconFetcher
+        itemComposable(
+            Modifier.align(Alignment.Center),
+            item,
+            serverUrl,
+            { expandedTrackId = item.itemId },
+            itemSize,
+            true,
+            providerIconFetcher
         )
         DropdownMenu(
             expanded = expandedTrackId == item.itemId,
@@ -91,14 +178,15 @@ fun TrackItemWithMenu(
                 }
             )
 
-
-            DropdownMenuItem(
-                text = { Text(if (item.isInLibrary) "Remove from Library" else "Add to Library") },
-                onClick = {
-                    libraryActions.onLibraryClick(item)
-                    expandedTrackId = null
-                }
-            )
+            (item as? AppMediaItem)?.let {
+                DropdownMenuItem(
+                    text = { Text(if (item.isInLibrary) "Remove from Library" else "Add to Library") },
+                    onClick = {
+                        libraryActions.onLibraryClick(item as AppMediaItem)
+                        expandedTrackId = null
+                    }
+                )
+            }
 
 
             // Favorite management (only for library items)
@@ -106,13 +194,15 @@ fun TrackItemWithMenu(
                 DropdownMenuItem(
                     text = { Text(if (item.favorite == true) "Unfavorite" else "Favorite") },
                     onClick = {
-                        libraryActions.onFavoriteClick(item)
-                        expandedTrackId = null
+                        (item as? AppMediaItem)?.let {
+                            libraryActions.onFavoriteClick(it)
+                            expandedTrackId = null
+                        }
                     }
                 )
             }
 
-            if (playlistActions != null) {
+            if (playlistActions != null && item is AppMediaItem.Track) {
                 DropdownMenuItem(
                     text = { Text("Add to Playlist") },
                     onClick = {
@@ -139,7 +229,7 @@ fun TrackItemWithMenu(
         }
 
         // Add to Playlist Dialog
-        if (showPlaylistDialog) {
+        if (showPlaylistDialog && item is AppMediaItem.Track) {
             AlertDialog(
                 onDismissRequest = {
                     showPlaylistDialog = false

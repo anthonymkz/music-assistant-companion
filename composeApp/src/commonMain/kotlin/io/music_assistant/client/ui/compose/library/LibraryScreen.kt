@@ -22,7 +22,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import compose.icons.TablerIcons
 import compose.icons.tablericons.Plus
 import io.music_assistant.client.data.model.client.AppMediaItem
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.MediaType
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.ui.compose.common.DataState
@@ -66,6 +67,7 @@ fun LibraryScreen(
         MediaType.ALBUM -> LibraryViewModel.Tab.ALBUMS
         MediaType.TRACK -> LibraryViewModel.Tab.TRACKS
         MediaType.PLAYLIST -> LibraryViewModel.Tab.PLAYLISTS
+        MediaType.PODCAST -> LibraryViewModel.Tab.PODCASTS
         null -> LibraryViewModel.Tab.ARTISTS
         else -> LibraryViewModel.Tab.ARTISTS
     }
@@ -115,7 +117,7 @@ private fun Library(
     onBack: () -> Unit,
     onTabSelected: (LibraryViewModel.Tab) -> Unit,
     onItemClick: (AppMediaItem) -> Unit,
-    onTrackClick: (AppMediaItem.Track, QueueOption) -> Unit,
+    onTrackClick: (PlayableItem, QueueOption) -> Unit,
     onCreatePlaylistClick: () -> Unit,
     onLoadMore: (LibraryViewModel.Tab) -> Unit,
     onSearchQueryChanged: (LibraryViewModel.Tab, String) -> Unit,
@@ -137,7 +139,7 @@ private fun Library(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
                 // Tab row
-                PrimaryTabRow(
+                ScrollableTabRow(
                     selectedTabIndex = state.tabs.indexOfFirst { it.isSelected }
                 ) {
                     state.tabs.forEach { tabState ->
@@ -151,6 +153,7 @@ private fun Library(
                                         LibraryViewModel.Tab.ALBUMS -> "Albums"
                                         LibraryViewModel.Tab.TRACKS -> "Tracks"
                                         LibraryViewModel.Tab.PLAYLISTS -> "Playlists"
+                                        LibraryViewModel.Tab.PODCASTS -> "Podcasts"
                                     }
                                 )
                             }
@@ -256,7 +259,7 @@ private fun TabContent(
     tabState: LibraryViewModel.TabState,
     serverUrl: String?,
     onItemClick: (AppMediaItem) -> Unit,
-    onTrackClick: (AppMediaItem.Track, QueueOption) -> Unit,
+    onTrackClick: (PlayableItem, QueueOption) -> Unit,
     onCreatePlaylistClick: () -> Unit,
     onLoadMore: () -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
@@ -267,14 +270,16 @@ private fun TabContent(
     val albumsGridState = rememberLazyGridState()
     val tracksGridState = rememberLazyGridState()
     val playlistsGridState = rememberLazyGridState()
+    val podcastsGridState = rememberLazyGridState()
 
     val gridStates =
-        remember(artistsGridState, albumsGridState, tracksGridState, playlistsGridState) {
+        remember(artistsGridState, albumsGridState, tracksGridState, playlistsGridState, podcastsGridState) {
             mapOf(
                 LibraryViewModel.Tab.ARTISTS to artistsGridState,
                 LibraryViewModel.Tab.ALBUMS to albumsGridState,
                 LibraryViewModel.Tab.TRACKS to tracksGridState,
-                LibraryViewModel.Tab.PLAYLISTS to playlistsGridState
+                LibraryViewModel.Tab.PLAYLISTS to playlistsGridState,
+                LibraryViewModel.Tab.PODCASTS to podcastsGridState
             )
         }
 

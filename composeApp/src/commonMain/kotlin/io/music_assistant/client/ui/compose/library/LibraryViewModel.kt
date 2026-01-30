@@ -9,6 +9,7 @@ import io.music_assistant.client.data.MainDataSource
 import io.music_assistant.client.data.model.client.AppMediaItem
 import io.music_assistant.client.data.model.client.AppMediaItem.Companion.toAppMediaItem
 import io.music_assistant.client.data.model.client.AppMediaItem.Companion.toAppMediaItemList
+import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.data.model.server.ServerMediaItem
 import io.music_assistant.client.data.model.server.events.MediaItemAddedEvent
@@ -37,7 +38,7 @@ class LibraryViewModel(
     }
 
     enum class Tab {
-        ARTISTS, ALBUMS, TRACKS, PLAYLISTS
+        ARTISTS, ALBUMS, TRACKS, PLAYLISTS, PODCASTS
     }
 
     data class TabState(
@@ -86,6 +87,7 @@ class LibraryViewModel(
                     loadAlbums()
                     loadTracks()
                     loadPlaylists()
+                    loadPodcasts()
                     // Tracks tab stays as NoData since there's no API
                     updateTabState(Tab.TRACKS, DataState.NoData())
                 }
@@ -131,6 +133,7 @@ class LibraryViewModel(
                             Tab.ALBUMS -> loadAlbums()
                             Tab.TRACKS -> loadTracks()
                             Tab.PLAYLISTS -> loadPlaylists()
+                            Tab.PODCASTS -> loadPodcasts()
                         }
                     }
             }
@@ -182,7 +185,7 @@ class LibraryViewModel(
         }
     }
 
-    fun onTrackClick(track: AppMediaItem.Track, option: QueueOption) {
+    fun onTrackClick(track: PlayableItem, option: QueueOption) {
         viewModelScope.launch {
             val queueId = mainDataSource.selectedPlayer?.queueOrPlayerId ?: return@launch
 
@@ -323,6 +326,37 @@ class LibraryViewModel(
         }
     }
 
+    private fun loadPodcasts() {
+        viewModelScope.launch {
+            val tabState = _state.value.tabs.find { it.tab == Tab.PODCASTS }
+            val searchQuery = tabState?.searchQuery?.takeIf { it.length >= 0 }
+            val favoritesOnly = tabState?.onlyFavorites?.takeIf { it }
+            updateTabState(Tab.PODCASTS, DataState.Loading())
+            val result = apiClient.sendRequest(
+                Request.Podcast.listLibrary(
+                    limit = PAGE_SIZE,
+                    offset = 0,
+                    search = searchQuery,
+                    favorite = favoritesOnly
+                )
+            )
+            result.resultAs<List<ServerMediaItem>>()
+                ?.toAppMediaItemList()
+                ?.filterIsInstance<AppMediaItem.Podcast>()
+                ?.let { podcasts ->
+                    updateTabStateWithData(
+                        tab = Tab.PODCASTS,
+                        items = podcasts,
+                        offset = PAGE_SIZE,
+                        hasMore = podcasts.size >= PAGE_SIZE
+                    )
+                } ?: run {
+                Logger.e("Error loading podcasts:", result.exceptionOrNull())
+                updateTabState(Tab.PODCASTS, DataState.Error())
+            }
+        }
+    }
+
     fun loadMore(tab: Tab) {
         val tabState = _state.value.tabs.find { it.tab == tab } ?: return
 
@@ -368,6 +402,14 @@ class LibraryViewModel(
 
                 Tab.PLAYLISTS -> apiClient.sendRequest(
                     Request.Playlist.listLibrary(
+                        limit = PAGE_SIZE,
+                        offset = tabState.offset,
+                        search = searchQuery
+                    )
+                )
+
+                Tab.PODCASTS -> apiClient.sendRequest(
+                    Request.Podcast.listLibrary(
                         limit = PAGE_SIZE,
                         offset = tabState.offset,
                         search = searchQuery
@@ -440,6 +482,7 @@ class LibraryViewModel(
                     is AppMediaItem.Album -> tabState.tab == Tab.ALBUMS
                     is AppMediaItem.Track -> tabState.tab == Tab.TRACKS
                     is AppMediaItem.Playlist -> tabState.tab == Tab.PLAYLISTS
+                    is AppMediaItem.Podcast -> tabState.tab == Tab.PODCASTS
                     else -> false
                 }
 
