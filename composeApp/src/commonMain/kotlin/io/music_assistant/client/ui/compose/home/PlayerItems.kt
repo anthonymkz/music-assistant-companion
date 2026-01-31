@@ -3,6 +3,7 @@
 package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,8 +58,6 @@ import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
 import io.music_assistant.client.utils.formatDuration
-import kotlin.math.roundToInt
-import kotlin.time.Duration
 import kotlin.time.DurationUnit
 
 @Composable
@@ -234,11 +234,12 @@ fun FullPlayerItem(
     }
 
     Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
@@ -278,18 +279,26 @@ fun FullPlayerItem(
             contentAlignment = Alignment.Center
         ) {
             if (track != null) {
-                val placeholder = rememberPlaceholderPainter(
-                    backgroundColor = primaryContainer,
-                    iconColor = onPrimaryContainer,
-                    icon = Icons.Default.MusicNote
-                )
-                AsyncImage(
-                    placeholder = placeholder,
-                    fallback = placeholder,
-                    model = track.imageInfo?.url(serverUrl),
-                    contentDescription = track.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                val placeholder =
+                    rememberPlaceholderPainter(
+                        backgroundColor = primaryContainer,
+                        iconColor = onPrimaryContainer,
+                        icon = track.defaultIcon
+                    )
+                track.imageInfo?.url(serverUrl)?.let {
+                    AsyncImage(
+                        placeholder = placeholder,
+                        fallback = placeholder,
+                        model = it,
+                        contentDescription = track.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } ?: Icon(
+                    imageVector = track.defaultIcon,
+                    contentDescription = null,
+                    modifier = Modifier.size(120.dp),
+                    tint = onPrimaryContainer
                 )
             } else {
                 Icon(
@@ -304,9 +313,11 @@ fun FullPlayerItem(
 
         // Track info
         Column(
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
+                modifier = Modifier.basicMarquee(),
                 text = track?.name ?: "--idle--",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
@@ -315,6 +326,7 @@ fun FullPlayerItem(
             )
             if (item.queueInfo?.currentItem?.isPlayable == false) {
                 Text(
+                    modifier = Modifier.padding(horizontal = 16.dp),
                     text = "Cannot play this item",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
@@ -323,6 +335,7 @@ fun FullPlayerItem(
                 )
             } else {
                 Text(
+                    modifier = Modifier.padding(horizontal = 16.dp),
                     text = track?.subtitle ?: "",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -331,6 +344,7 @@ fun FullPlayerItem(
                 )
             }
             Text(
+                modifier = Modifier.padding(horizontal = 16.dp),
                 text = item.queueInfo?.currentItem?.audioFormat(item.playerId)?.description ?: "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
@@ -350,7 +364,9 @@ fun FullPlayerItem(
         // Use user drag position if dragging, otherwise use calculated position
         val sliderPosition = userDragPosition ?: displayPosition
 
-        Column {// Progress bar
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+        ) {// Progress bar
             Slider(
                 value = sliderPosition,
                 valueRange = duration?.let { 0f..it } ?: 0f..1f,
@@ -389,16 +405,17 @@ fun FullPlayerItem(
 
             // Duration labels
             Row(
-                modifier = Modifier.fillMaxWidth().offset(y = (-8).dp),
+                modifier = Modifier.fillMaxWidth().offset(y = (-16).dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = sliderPosition.takeIf { track != null }.formatDuration(DurationUnit.SECONDS),
+                    text = sliderPosition.takeIf { track != null }
+                        .formatDuration(DurationUnit.SECONDS).takeIf { duration != null } ?: "",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = duration.formatDuration(DurationUnit.SECONDS),
+                    text = duration?.formatDuration(DurationUnit.SECONDS) ?: "\u221E",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

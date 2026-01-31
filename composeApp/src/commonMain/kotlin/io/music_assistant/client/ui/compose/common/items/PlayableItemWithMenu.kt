@@ -103,13 +103,51 @@ fun EpisodeWithMenu(
     )
 }
 
+@Composable
+fun RadioWithMenu(
+    modifier: Modifier = Modifier,
+    item: PlayableItem,
+    itemSize: Dp = 96.dp,
+    onTrackPlayOption: ((PlayableItem, QueueOption) -> Unit),
+    onItemClick: ((PlayableItem) -> Unit)? = null,
+    playlistActions: ActionsViewModel.PlaylistActions? = null,
+    onRemoveFromPlaylist: (() -> Unit)? = null,
+    libraryActions: ActionsViewModel.LibraryActions,
+    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?,
+    serverUrl: String?,
+) {
+    PlayableItemWithMenu(
+        modifier = modifier,
+        item = item,
+        itemSize = itemSize,
+        onTrackPlayOption = onTrackPlayOption,
+        onItemClick = onItemClick,
+        playlistActions = playlistActions,
+        onRemoveFromPlaylist = onRemoveFromPlaylist,
+        libraryActions = libraryActions,
+        providerIconFetcher = providerIconFetcher,
+        serverUrl = serverUrl,
+        itemComposable = { mod, itm, srvUrl, onClick, size, showSubtitle, iconFetcher ->
+            MediaItemRadio(
+                modifier = mod,
+                item = itm,
+                serverUrl = srvUrl,
+                onClick = onClick,
+                itemSize = size,
+                showSubtitle = showSubtitle,
+                providerIconFetcher = iconFetcher
+            )
+        }
+    )
+}
+
 /**
  * A reusable composable that displays a track item with a dropdown menu for queue actions.
  * When onTrackClick is provided, clicking the item opens a menu with play options.
  * Otherwise, it behaves as a simple clickable track item.
  */
 @Composable
-fun PlayableItemWithMenu(
+private fun PlayableItemWithMenu(
     modifier: Modifier = Modifier,
     item: PlayableItem,
     itemSize: Dp = 96.dp,

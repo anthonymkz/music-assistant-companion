@@ -26,6 +26,8 @@ import androidx.compose.material.icons.automirrored.filled.FeaturedPlayList
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Podcasts
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,6 +53,7 @@ import io.music_assistant.client.ui.compose.common.items.MediaItemAlbum
 import io.music_assistant.client.ui.compose.common.items.MediaItemArtist
 import io.music_assistant.client.ui.compose.common.items.MediaItemPlaylist
 import io.music_assistant.client.ui.compose.common.items.MediaItemPodcast
+import io.music_assistant.client.ui.compose.common.items.RadioWithMenu
 import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
@@ -79,6 +82,7 @@ fun LandingPage(
                             || item is AppMediaItem.Playlist
                             || item is AppMediaItem.Podcast
                             || item is AppMediaItem.PodcastEpisode
+                            || item is AppMediaItem.RadioStation
                 } == true
             }
         } else {
@@ -143,7 +147,8 @@ fun LibraryRow(
                 Icons.AutoMirrored.Filled.FeaturedPlayList,
                 MediaType.PLAYLIST
             ),
-            LibraryItem("Podcasts", Icons.Default.Mic, MediaType.PODCAST),
+            LibraryItem("Podcasts", Icons.Default.Podcasts, MediaType.PODCAST),
+            LibraryItem("Radio", Icons.Default.Radio, MediaType.RADIO),
             LibraryItem("Global search", Icons.Default.Search, null),
         )
     }
@@ -297,7 +302,8 @@ fun CategoryRow(
                         is AppMediaItem.Album,
                         is AppMediaItem.Playlist,
                         is AppMediaItem.Podcast,
-                        is AppMediaItem.PodcastEpisode -> "${item::class.simpleName}_${item.itemId}"
+                        is AppMediaItem.PodcastEpisode,
+                        is AppMediaItem.RadioStation -> "${item::class.simpleName}_${item.itemId}"
 
                         else -> item.hashCode()
                     }
@@ -310,6 +316,7 @@ fun CategoryRow(
                         is AppMediaItem.Playlist -> "Playlist"
                         is AppMediaItem.Podcast -> "Podcast"
                         is AppMediaItem.PodcastEpisode -> "Episode"
+                        is AppMediaItem.RadioStation -> "RadioStation"
                         else -> "Unknown"
                     }
                 }
@@ -373,6 +380,16 @@ fun CategoryRow(
                         providerIconFetcher = providerIconFetcher
                     )
 
+                    is AppMediaItem.RadioStation -> RadioWithMenu(
+                        item = item,
+                        serverUrl = serverUrl,
+                        itemSize = 96.dp,
+                        onTrackPlayOption = onTrackPlayOption,
+                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                        playlistActions = playlistActions,
+                        libraryActions = libraryActions,
+                        providerIconFetcher = providerIconFetcher
+                    )
 
                     else -> {}
                 }
@@ -387,6 +404,7 @@ fun allItemsTitle(type: MediaType) = when (type) {
     MediaType.ARTIST -> "All artists"
     MediaType.PLAYLIST -> "All playlists"
     MediaType.PODCAST -> "All podcasts"
+    MediaType.RADIO -> "All radio stations"
     else -> null
 }
 

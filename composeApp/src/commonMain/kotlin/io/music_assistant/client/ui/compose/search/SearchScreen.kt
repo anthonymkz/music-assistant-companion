@@ -42,10 +42,12 @@ import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.ToastHost
 import io.music_assistant.client.ui.compose.common.ToastState
+import io.music_assistant.client.ui.compose.common.items.EpisodeWithMenu
 import io.music_assistant.client.ui.compose.common.items.MediaItemAlbum
 import io.music_assistant.client.ui.compose.common.items.MediaItemArtist
 import io.music_assistant.client.ui.compose.common.items.MediaItemPlaylist
 import io.music_assistant.client.ui.compose.common.items.MediaItemPodcast
+import io.music_assistant.client.ui.compose.common.items.RadioWithMenu
 import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.providers.ProviderIcon
 import io.music_assistant.client.ui.compose.common.rememberToastState
@@ -180,7 +182,8 @@ private fun SearchContent(
                             results.albums.isNotEmpty() ||
                             results.tracks.isNotEmpty() ||
                             results.playlists.isNotEmpty() ||
-                            results.podcasts.isNotEmpty()
+                            results.podcasts.isNotEmpty() ||
+                            results.radios.isNotEmpty()
 
                     if (!hasResults) {
                         Box(
@@ -269,6 +272,24 @@ private fun SearchContent(
                                         item = podcast,
                                         serverUrl = serverUrl,
                                         onClick = { onItemClick(it) },
+                                        providerIconFetcher = providerIconFetcher,
+                                    )
+                                }
+                            }
+
+                            // Radio section
+                            if (results.radios.isNotEmpty()) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    SectionHeader("Radio")
+                                }
+                                items(results.radios) { radio ->
+                                    RadioWithMenu(
+                                        item = radio,
+                                        serverUrl = serverUrl,
+                                        onTrackPlayOption = onTrackClick,
+                                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                                        playlistActions = playlistActions,
+                                        libraryActions = libraryActions,
                                         providerIconFetcher = providerIconFetcher,
                                     )
                                 }

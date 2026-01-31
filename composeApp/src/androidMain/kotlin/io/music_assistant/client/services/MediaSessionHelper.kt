@@ -101,7 +101,9 @@ class MediaSessionHelper(
             .putString(
                 MediaMetadataCompat.METADATA_KEY_ARTIST,
                 if (multiPlayer) {
-                    "${data.artist ?: "Unknown Artist"} (on ${data.playerName})"
+                    data.artist?.let {
+                        "$it - (on ${data.playerName})"
+                    } ?: "Playing on ${data.playerName}"
                 } else {
                     data.artist ?: "Unknown Artist"
                 }

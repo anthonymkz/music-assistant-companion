@@ -23,6 +23,8 @@ import androidx.compose.material.icons.automirrored.filled.FeaturedPlayList
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Podcasts
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,7 +33,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -389,14 +393,53 @@ fun PlaylistImage(
     item: AppMediaItem.Playlist,
     serverUrl: String?
 ) {
+    val primary = MaterialTheme.colorScheme.primary
     val primaryContainer = MaterialTheme.colorScheme.primaryContainer
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
     Box(
         modifier = Modifier
             .size(itemSize)
-            .clip(RoundedCornerShape(8.dp)),
-        contentAlignment = Alignment.Center
+            .clip(RoundedCornerShape(8.dp))
     ) {
+        val bindingWidth = 10.dp
+        val notebookCutShape = remember(bindingWidth) { NotebookCutShape(bindingWidth) }
+
+        // Draw notebook cover background (clipped)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(notebookCutShape)
+                .background(primaryContainer)
+        )
+
+        // Draw binding ellipses in the cut area
+        val ellipseRadius = 4.dp
+        val ellipseCount = 7
+        Canvas(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val ellipseRadiusPx = ellipseRadius.toPx()
+            val topPadding = ellipseRadiusPx * 2
+            val bottomPadding = ellipseRadiusPx * 2
+            val availableHeight = size.height - topPadding - bottomPadding
+            val spacing = if (ellipseCount > 1) {
+                availableHeight / (ellipseCount - 1)
+            } else {
+                0f
+            }
+
+            // Draw ellipses in the binding strip area
+            for (i in 0 until ellipseCount) {
+                val y = topPadding + (i * spacing)
+                drawCircle(
+                    color = primary,
+                    radius = ellipseRadiusPx,
+                    center = Offset(x = bindingWidth.toPx() / 2f, y = y)
+                )
+            }
+        }
+
+        // Draw artwork (clipped)
         val placeholder = rememberPlaceholderPainter(
             backgroundColor = primaryContainer,
             iconColor = onPrimaryContainer,
@@ -408,7 +451,9 @@ fun PlaylistImage(
             model = item.imageInfo?.url(serverUrl),
             contentDescription = item.name,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(notebookCutShape)
         )
     }
 }
@@ -463,18 +508,48 @@ fun PodcastImage(
     item: AppMediaItem.Podcast,
     serverUrl: String?
 ) {
+    val primary = MaterialTheme.colorScheme.primary
     val primaryContainer = MaterialTheme.colorScheme.primaryContainer
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
     Box(
         modifier = Modifier
             .size(itemSize)
-            .clip(RoundedCornerShape(8.dp)),
-        contentAlignment = Alignment.Center
+            .clip(RoundedCornerShape(8.dp))
     ) {
+        val cutSize = itemSize / 3
+        val cornerCutShape = remember(cutSize) { CornerCutShape(cutSize) }
+
+        // Draw background (clipped)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(cornerCutShape)
+                .background(primaryContainer)
+        )
+
+        // Draw concentric circles in the cut corner area (centered on cut edge, rippling outward)
+        val circleCount = 10
+        Canvas(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val center = cutSize.toPx() * 0.7f
+            val spacing = center / circleCount
+
+            for (i in 1..circleCount - 1) {
+                drawCircle(
+                    color = primary,
+                    radius = i * spacing,
+                    center = Offset(center, center),
+                    style = Stroke(width = 2f)
+                )
+            }
+        }
+
+        // Draw artwork (clipped)
         val placeholder = rememberPlaceholderPainter(
             backgroundColor = primaryContainer,
             iconColor = onPrimaryContainer,
-            icon = Icons.Default.Mic
+            icon = Icons.Default.Podcasts
         )
         AsyncImage(
             placeholder = placeholder,
@@ -482,7 +557,9 @@ fun PodcastImage(
             model = item.imageInfo?.url(serverUrl),
             contentDescription = item.name,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(cornerCutShape)
         )
     }
 }
@@ -551,7 +628,7 @@ fun PodcastEpisodeImage(
         val placeholder = rememberPlaceholderPainter(
             backgroundColor = primaryContainer,
             iconColor = onPrimaryContainer,
-            icon = Icons.Default.MusicNote
+            icon = Icons.Default.Podcasts
         )
         AsyncImage(
             placeholder = placeholder,
@@ -562,23 +639,112 @@ fun PodcastEpisodeImage(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Draw waveform overlay at the bottom (similar to tracks)
-        val waveformPainter = remember(onPrimaryContainer) {
-            WaveformPainter(
-                waveColor = primary,
-                thickness = 3f
-            )
-        }
+        // Draw concentric circles from bottom center
+        val circleCount = 8
         Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(20.dp)
-                .align(Alignment.BottomCenter)
+            modifier = Modifier.fillMaxSize()
         ) {
-            with(waveformPainter) {
-                draw(size)
+            val bottomCenter = Offset(size.width / 2f, size.height)
+            val maxRadius = size.height / 2f
+            val spacing = maxRadius / circleCount
+
+            for (i in 1..circleCount) {
+                val alpha = 1f - (i.toFloat() / circleCount) // Fade as circles get bigger
+                if (alpha > 0f) {
+                    drawCircle(
+                        color = primary.copy(alpha = alpha),
+                        radius = i * spacing,
+                        center = bottomCenter,
+                        style = Stroke(width = 3f)
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * Radio station media item with wavy octagon shape.
+ *
+ * @param item The radio station item to display
+ * @param serverUrl Server URL for image loading
+ * @param onClick Click handler
+ * @param itemSize Size of the item (default 96.dp)
+ * @param showSubtitle Whether to show subtitle (default true)
+ */
+@Composable
+fun MediaItemRadio(
+    modifier: Modifier = Modifier,
+    item: PlayableItem,
+    serverUrl: String?,
+    onClick: (PlayableItem) -> Unit,
+    itemSize: Dp = 96.dp,
+    showSubtitle: Boolean = true,
+    providerIconFetcher: (@Composable (Modifier, String) -> Unit)?
+) {
+    MediaItemWrapper(
+        modifier = modifier,
+        onClick = { onClick(item) }
+    ) {
+        Box {
+            RadioImage(itemSize, item, serverUrl)
+            (item as? AppMediaItem)?.let {
+                Badges(
+                    item = it,
+                    providerIconFetcher = providerIconFetcher
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = item.name,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.width(itemSize),
+            textAlign = TextAlign.Center,
+        )
+        if (showSubtitle) {
+            Text(
+                text = item.subtitle.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(itemSize),
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+fun RadioImage(
+    itemSize: Dp,
+    item: PlayableItem,
+    serverUrl: String?
+) {
+    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+    val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
+    Box(
+        modifier = Modifier
+            .size(itemSize)
+            .clip(WavyHexagonShape())
+            .background(primaryContainer)
+    ) {
+        val placeholder = rememberPlaceholderPainter(
+            backgroundColor = primaryContainer,
+            iconColor = onPrimaryContainer,
+            icon = Icons.Default.Radio
+        )
+        AsyncImage(
+            placeholder = placeholder,
+            fallback = placeholder,
+            model = item.imageInfo?.url(serverUrl),
+            contentDescription = item.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 

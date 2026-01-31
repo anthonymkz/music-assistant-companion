@@ -68,6 +68,7 @@ fun LibraryScreen(
         MediaType.TRACK -> LibraryViewModel.Tab.TRACKS
         MediaType.PLAYLIST -> LibraryViewModel.Tab.PLAYLISTS
         MediaType.PODCAST -> LibraryViewModel.Tab.PODCASTS
+        MediaType.RADIO -> LibraryViewModel.Tab.RADIOS
         null -> LibraryViewModel.Tab.ARTISTS
         else -> LibraryViewModel.Tab.ARTISTS
     }
@@ -154,6 +155,7 @@ private fun Library(
                                         LibraryViewModel.Tab.TRACKS -> "Tracks"
                                         LibraryViewModel.Tab.PLAYLISTS -> "Playlists"
                                         LibraryViewModel.Tab.PODCASTS -> "Podcasts"
+                                        LibraryViewModel.Tab.RADIOS -> "Radio"
                                     }
                                 )
                             }
@@ -271,15 +273,17 @@ private fun TabContent(
     val tracksGridState = rememberLazyGridState()
     val playlistsGridState = rememberLazyGridState()
     val podcastsGridState = rememberLazyGridState()
+    val radiosGridState = rememberLazyGridState()
 
     val gridStates =
-        remember(artistsGridState, albumsGridState, tracksGridState, playlistsGridState, podcastsGridState) {
+        remember(artistsGridState, albumsGridState, tracksGridState, playlistsGridState, podcastsGridState, radiosGridState) {
             mapOf(
                 LibraryViewModel.Tab.ARTISTS to artistsGridState,
                 LibraryViewModel.Tab.ALBUMS to albumsGridState,
                 LibraryViewModel.Tab.TRACKS to tracksGridState,
                 LibraryViewModel.Tab.PLAYLISTS to playlistsGridState,
-                LibraryViewModel.Tab.PODCASTS to podcastsGridState
+                LibraryViewModel.Tab.PODCASTS to podcastsGridState,
+                LibraryViewModel.Tab.RADIOS to radiosGridState
             )
         }
 

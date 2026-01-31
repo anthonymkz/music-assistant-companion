@@ -38,7 +38,7 @@ class LibraryViewModel(
     }
 
     enum class Tab {
-        ARTISTS, ALBUMS, TRACKS, PLAYLISTS, PODCASTS
+        ARTISTS, ALBUMS, TRACKS, PLAYLISTS, PODCASTS, RADIOS
     }
 
     data class TabState(
@@ -88,6 +88,7 @@ class LibraryViewModel(
                     loadTracks()
                     loadPlaylists()
                     loadPodcasts()
+                    loadRadios()
                     // Tracks tab stays as NoData since there's no API
                     updateTabState(Tab.TRACKS, DataState.NoData())
                 }
@@ -134,6 +135,7 @@ class LibraryViewModel(
                             Tab.TRACKS -> loadTracks()
                             Tab.PLAYLISTS -> loadPlaylists()
                             Tab.PODCASTS -> loadPodcasts()
+                            Tab.RADIOS -> loadRadios()
                         }
                     }
             }
@@ -357,6 +359,37 @@ class LibraryViewModel(
         }
     }
 
+    private fun loadRadios() {
+        viewModelScope.launch {
+            val tabState = _state.value.tabs.find { it.tab == Tab.RADIOS }
+            val searchQuery = tabState?.searchQuery?.takeIf { it.length >= 0 }
+            val favoritesOnly = tabState?.onlyFavorites?.takeIf { it }
+            updateTabState(Tab.RADIOS, DataState.Loading())
+            val result = apiClient.sendRequest(
+                Request.RadioStation.listLibrary(
+                    limit = PAGE_SIZE,
+                    offset = 0,
+                    search = searchQuery,
+                    favorite = favoritesOnly
+                )
+            )
+            result.resultAs<List<ServerMediaItem>>()
+                ?.toAppMediaItemList()
+                ?.filterIsInstance<AppMediaItem.RadioStation>()
+                ?.let { radios ->
+                    updateTabStateWithData(
+                        tab = Tab.RADIOS,
+                        items = radios,
+                        offset = PAGE_SIZE,
+                        hasMore = radios.size >= PAGE_SIZE
+                    )
+                } ?: run {
+                Logger.e("Error loading radios:", result.exceptionOrNull())
+                updateTabState(Tab.RADIOS, DataState.Error())
+            }
+        }
+    }
+
     fun loadMore(tab: Tab) {
         val tabState = _state.value.tabs.find { it.tab == tab } ?: return
 
@@ -410,6 +443,14 @@ class LibraryViewModel(
 
                 Tab.PODCASTS -> apiClient.sendRequest(
                     Request.Podcast.listLibrary(
+                        limit = PAGE_SIZE,
+                        offset = tabState.offset,
+                        search = searchQuery
+                    )
+                )
+
+                Tab.RADIOS -> apiClient.sendRequest(
+                    Request.RadioStation.listLibrary(
                         limit = PAGE_SIZE,
                         offset = tabState.offset,
                         search = searchQuery
@@ -483,6 +524,7 @@ class LibraryViewModel(
                     is AppMediaItem.Track -> tabState.tab == Tab.TRACKS
                     is AppMediaItem.Playlist -> tabState.tab == Tab.PLAYLISTS
                     is AppMediaItem.Podcast -> tabState.tab == Tab.PODCASTS
+                    is AppMediaItem.RadioStation -> tabState.tab == Tab.RADIOS
                     else -> false
                 }
 

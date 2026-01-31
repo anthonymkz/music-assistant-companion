@@ -1,5 +1,10 @@
 package io.music_assistant.client.data.model.client
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Podcasts
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.ui.graphics.vector.ImageVector
 import io.ktor.http.URLBuilder
 import io.ktor.http.appendPathSegments
 import io.ktor.http.encodeURLQueryComponent
@@ -14,6 +19,7 @@ import io.music_assistant.client.utils.formatDuration
 import kotlin.time.DurationUnit
 
 interface PlayableItem {
+    val defaultIcon: ImageVector
     val parentName: String?
     val itemId: String
     val name: String
@@ -264,6 +270,7 @@ abstract class AppMediaItem(
     ), PlayableItem {
         override val subtitle = artists?.joinToString(separator = ", ") { it.name }
         override val parentName: String? = album?.name
+        override val defaultIcon = Icons.Default.MusicNote
     }
 
     class Playlist(
@@ -345,8 +352,35 @@ abstract class AppMediaItem(
         uri = uri,
         image = image,
     ), PlayableItem {
-        override val subtitle = podcast?.name
+        override val subtitle = null
         override val parentName: String? = podcast?.name
+        override val defaultIcon = Icons.Default.Podcasts
+    }
+
+    class RadioStation(
+        itemId: String,
+        provider: String,
+        name: String,
+        providerMappings: List<ProviderMapping>?,
+        metadata: Metadata?,
+        favorite: Boolean?,
+        uri: String?,
+        image: MediaItemImage?,
+    ) : AppMediaItem(
+        itemId = itemId,
+        provider = provider,
+        name = name,
+        providerMappings = providerMappings,
+        metadata = metadata,
+        favorite = favorite,
+        mediaType = MediaType.RADIO,
+        uri = uri,
+        image = image,
+    ), PlayableItem {
+        override val duration: Double? = null  // Radio stations have no duration
+        override val subtitle: String = "Radio"
+        override val parentName: String? = null  // No parent item
+        override val defaultIcon = Icons.Default.Radio
     }
 
     companion object {
@@ -467,7 +501,17 @@ abstract class AppMediaItem(
                     podcast = podcast?.let { it.toAppMediaItem() as? Podcast },
                 )
 
-                MediaType.RADIO,
+                MediaType.RADIO -> RadioStation(
+                    itemId = itemId,
+                    provider = provider,
+                    name = name,
+                    providerMappings = providerMappings,
+                    metadata = metadata,
+                    favorite = favorite,
+                    uri = uri,
+                    image = image,
+                )
+
                 MediaType.AUDIOBOOK,
                 MediaType.FLOW_STREAM,
                 MediaType.ANNOUNCEMENT,
@@ -482,7 +526,8 @@ abstract class AppMediaItem(
                     albums.toAppMediaItemList() +
                     tracks.toAppMediaItemList() +
                     playlists.toAppMediaItemList() +
-                    podcasts.toAppMediaItemList()
+                    podcasts.toAppMediaItemList() +
+                    radios.toAppMediaItemList()
 
         val AudioFormat.description
             get() = listOfNotNull(

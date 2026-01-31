@@ -28,6 +28,7 @@ import io.music_assistant.client.ui.compose.common.items.MediaItemAlbum
 import io.music_assistant.client.ui.compose.common.items.MediaItemArtist
 import io.music_assistant.client.ui.compose.common.items.MediaItemPlaylist
 import io.music_assistant.client.ui.compose.common.items.MediaItemPodcast
+import io.music_assistant.client.ui.compose.common.items.RadioWithMenu
 import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
 
@@ -113,6 +114,16 @@ fun AdaptiveMediaGrid(
                 )
 
                 is AppMediaItem.PodcastEpisode -> EpisodeWithMenu(
+                    item = item,
+                    serverUrl = serverUrl,
+                    onTrackPlayOption = onTrackClick,
+                    onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                    playlistActions = playlistActions,
+                    libraryActions = libraryActions,
+                    providerIconFetcher = null
+                )
+
+                is AppMediaItem.RadioStation -> RadioWithMenu(
                     item = item,
                     serverUrl = serverUrl,
                     onTrackPlayOption = onTrackClick,

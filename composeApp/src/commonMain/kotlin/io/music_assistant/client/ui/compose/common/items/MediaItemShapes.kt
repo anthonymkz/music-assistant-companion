@@ -73,3 +73,113 @@ class HoleShape(private val holeRadius: Dp) : Shape {
         return Outline.Generic(finalPath)
     }
 }
+
+/**
+ * Shape that cuts a vertical strip from the left side.
+ * Used for notebook/playlist spiral binding effect.
+ */
+class NotebookCutShape(private val stripWidth: Dp) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density
+    ): Outline {
+        return Outline.Generic(Path().apply {
+            val stripPx = with(density) { stripWidth.toPx() }
+
+            // Defines the content area, excluding the leftmost strip
+            moveTo(stripPx, 0f)
+            lineTo(size.width, 0f)
+            lineTo(size.width, size.height)
+            lineTo(stripPx, size.height)
+            close()
+        })
+    }
+}
+
+/**
+ * Shape that cuts the top-left corner.
+ * Used for podcast concentric circles effect.
+ */
+class CornerCutShape(private val cutSize: Dp) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density
+    ): Outline {
+        return Outline.Generic(Path().apply {
+            val cutPx = with(density) { cutSize.toPx() }
+
+            // Start from top-left corner after the cut
+            moveTo(cutPx, 0f)
+            lineTo(size.width, 0f)
+            lineTo(size.width, size.height)
+            lineTo(0f, size.height)
+            lineTo(0f, cutPx)
+            close()
+        })
+    }
+}
+
+/**
+ * Wavy hexagon shape with sinusoidal sides.
+ * Used for radio station items.
+ */
+class WavyHexagonShape : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density
+    ): Outline {
+        return Outline.Generic(Path().apply {
+            val width = size.width
+            val height = size.height
+            val centerX = width / 2f
+            val centerY = height / 2f
+            val radius = minOf(width, height) / 2f
+
+            // Calculate 6 points of hexagon
+            val points = List(6) { i ->
+                val angle = (i * 60f - 30f) * (Math.PI / 180f).toFloat()
+                Offset(
+                    centerX + radius * kotlin.math.cos(angle),
+                    centerY + radius * kotlin.math.sin(angle)
+                )
+            }
+
+            // Start at first point
+            moveTo(points[0].x, points[0].y)
+
+            // Draw sinusoidal edges between points
+            for (i in 0 until 6) {
+                val current = points[i]
+                val next = points[(i + 1) % 6]
+
+                // Create sinusoidal wave along the edge
+                val segments = 20 // Number of line segments for the sine wave
+                val amplitude = radius * 0.04f // Wave amplitude
+                val frequency = 3.0 // Number of complete waves per edge
+
+                for (j in 1..segments) {
+                    val t = j.toFloat() / segments
+
+                    // Linear interpolation along the edge
+                    val baseX = current.x + (next.x - current.x) * t
+                    val baseY = current.y + (next.y - current.y) * t
+
+                    // Calculate perpendicular offset for sine wave
+                    val edgeAngle = kotlin.math.atan2(next.y - current.y, next.x - current.x)
+                    val perpAngle = edgeAngle + Math.PI.toFloat() / 2f
+                    val waveOffset = amplitude * kotlin.math.sin((t * frequency * 2.0 * Math.PI).toFloat())
+
+                    val x = baseX + waveOffset * kotlin.math.cos(perpAngle)
+                    val y = baseY + waveOffset * kotlin.math.sin(perpAngle)
+
+                    lineTo(x, y)
+                }
+            }
+
+            close()
+        })
+    }
+}
