@@ -175,8 +175,14 @@ private fun SearchContent(
                     }
                 }
 
+                is DataState.Stale,
                 is DataState.Data -> {
-                    val results = resultsState.data
+                    // Handle both Data and Stale - both contain valid search results
+                    val results = when (resultsState) {
+                        is DataState.Data -> resultsState.data
+                        is DataState.Stale -> resultsState.data
+                        else -> return@Column
+                    }
                     val hasResults = results.artists.isNotEmpty() ||
                             results.albums.isNotEmpty() ||
                             results.tracks.isNotEmpty() ||

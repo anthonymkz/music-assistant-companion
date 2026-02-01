@@ -287,12 +287,18 @@ private fun TabContent(
             )
         }
 
-    when (tabState.dataState) {
+    when (val dataState = tabState.dataState) {
         is DataState.Loading -> LoadingState()
         is DataState.Error -> ErrorState()
         is DataState.NoData -> EmptyState()
+        is DataState.Stale,
         is DataState.Data -> {
-            val items = tabState.dataState.data
+            // Handle both Data and Stale - both contain valid library data
+            val items = when (dataState) {
+                is DataState.Data -> dataState.data
+                is DataState.Stale -> dataState.data
+                else -> emptyList()
+            }
             if (items.isEmpty()) {
                 EmptyState()
             } else {

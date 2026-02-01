@@ -24,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -147,9 +148,15 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                             }
                         }
                     } catch (e: Exception) {
-                        _sessionState.update {
-                            SessionState.Disconnected.Error(Exception("Connection failed: ${e.message}"))
-                        }
+                        // CRITICAL: Don't transition to Disconnected.Error during reconnection!
+                        // Stay in Reconnecting state and let the outer loop handle retries
+                        // Transitioning to Disconnected.Error would:
+                        // 1. Trigger navigation to Settings (lost auth)
+                        // 2. Clear stale data in MainDataSource
+                        // 3. Show Loading screen on next attempt
+                        Logger.withTag("ServiceClient")
+                            .w { "Reconnect attempt failed (staying in Reconnecting): ${e.message}" }
+                        // Don't update state - stay in Reconnecting!
                     }
                 }
             }
@@ -443,22 +450,46 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                 var reconnectAttempt = 0
                 val maxAttempts = 10
                 while (reconnectAttempt < maxAttempts) {
+                    // Check if user manually disconnected - if so, stop reconnection loop
+                    val currentState = _sessionState.value
+                    if (currentState is SessionState.Disconnected.ByUser) {
+                        Logger.withTag("ServiceClient")
+                            .i { "User manually disconnected - stopping reconnection loop" }
+                        return
+                    }
+                    if (currentState !is SessionState.Reconnecting) {
+                        Logger.withTag("ServiceClient")
+                            .i { "Session state changed to ${currentState::class.simpleName} - stopping reconnection loop" }
+                        return
+                    }
+
                     val delay = when (reconnectAttempt) {
                         0 -> 500L
                         1 -> 1000L
                         2 -> 2000L
-                        3 -> 5000L
-                        else -> 10000L
+                        3 -> 3000L
+                        else -> 5000L
                     }
 
                     Logger.withTag("ServiceClient")
                         .i { "Reconnect attempt ${reconnectAttempt + 1}/$maxAttempts in ${delay}ms" }
-                    kotlinx.coroutines.delay(delay)
+                    delay(delay)
+
+                    // Check again after delay in case user disconnected during sleep
+                    if (_sessionState.value is SessionState.Disconnected.ByUser) {
+                        Logger.withTag("ServiceClient")
+                            .i { "User manually disconnected during delay - stopping reconnection loop" }
+                        return
+                    }
+
+                    // CRITICAL: Read current connection info from settings
+                    // This allows user to change server IP during reconnection
+                    val currentConnectionInfo = settings.connectionInfo.value ?: connectionInfo
 
                     _sessionState.update {
                         SessionState.Reconnecting(
                             attempt = reconnectAttempt + 1,
-                            connectionInfo = connectionInfo,
+                            connectionInfo = currentConnectionInfo,
                             serverInfo = serverInfo,
                             user = user,
                             authProcessState = authProcessState,
@@ -468,20 +499,29 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
 
                     reconnectAttempt++
 
-                    try {
-                        Logger.withTag("ServiceClient").i { "Attempting reconnection..." }
-                        connect(connectionInfo)
-                        // If connect() succeeds, it will set state to Connected
+                    // Trigger connection attempt (async)
+                    Logger.withTag("ServiceClient").i { "Attempting reconnection to ${currentConnectionInfo.host}:${currentConnectionInfo.port}..." }
+                    connect(currentConnectionInfo)
+
+                    // Wait a bit for connection to establish (or fail)
+                    // The connect() method launches async, so we give it time to complete
+                    kotlinx.coroutines.delay(2000L)
+
+                    // Check if we successfully connected
+                    if (_sessionState.value is SessionState.Connected) {
+                        Logger.withTag("ServiceClient").i { "Reconnection successful!" }
                         return
-                    } catch (reconnectError: Exception) {
+                    }
+
+                    // Still in Reconnecting state - connection attempt failed, continue loop
+                    Logger.withTag("ServiceClient")
+                        .w { "Reconnect attempt $reconnectAttempt failed, will retry..." }
+
+                    if (reconnectAttempt >= maxAttempts) {
                         Logger.withTag("ServiceClient")
-                            .w { "Reconnect attempt $reconnectAttempt failed: ${reconnectError.message}" }
-                        if (reconnectAttempt >= maxAttempts) {
-                            Logger.withTag("ServiceClient")
-                                .e { "Max reconnect attempts reached, giving up" }
-                            disconnect(SessionState.Disconnected.Error(Exception("Failed to reconnect after $maxAttempts attempts")))
-                            return
-                        }
+                            .e { "Max reconnect attempts reached, giving up" }
+                        disconnect(SessionState.Disconnected.Error(Exception("Failed to reconnect after $maxAttempts attempts")))
+                        return
                     }
                 }
             }
@@ -530,9 +570,19 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
 
     private fun disconnect(newState: SessionState.Disconnected) {
         launch {
-            (_sessionState.value as? SessionState.Connected)?.let {
-                it.session.close()
-                _sessionState.update { newState }
+            when (val currentState = _sessionState.value) {
+                is SessionState.Connected -> {
+                    currentState.session.close()
+                    _sessionState.update { newState }
+                }
+                is SessionState.Reconnecting -> {
+                    // Already disconnected, just update state
+                    _sessionState.update { newState }
+                }
+                else -> {
+                    // Already disconnected or in some other state
+                    _sessionState.update { newState }
+                }
             }
         }
     }

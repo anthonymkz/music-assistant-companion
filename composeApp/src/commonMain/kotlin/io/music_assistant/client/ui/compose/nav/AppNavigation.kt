@@ -1,11 +1,14 @@
 package io.music_assistant.client.ui.compose.nav
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavKey
@@ -16,6 +19,7 @@ import androidx.navigation3.scene.DialogSceneStrategy
 import androidx.navigation3.ui.NavDisplay
 import androidx.savedstate.serialization.SavedStateConfiguration
 import io.music_assistant.client.api.ServiceClient
+import io.music_assistant.client.ui.compose.common.ConnectionStatusBanner
 import io.music_assistant.client.ui.compose.home.HomeScreen
 import io.music_assistant.client.ui.compose.settings.SettingsScreen
 import io.music_assistant.client.utils.BottomSheetSceneStrategy
@@ -75,7 +79,8 @@ fun NavigationRoot(modifier: Modifier = Modifier) {
             }
 
             is SessionState.Disconnected -> {
-                // If disconnected and not already on Settings, navigate to Settings
+                // Navigate to Settings for all disconnected states
+                // This includes: ByUser, Initial, NoServerData, and Error (max attempts reached)
                 if (backStack.last() !is NavScreen.Settings) {
                     backStack.clear()
                     backStack.add(NavScreen.Settings)
@@ -85,20 +90,16 @@ fun NavigationRoot(modifier: Modifier = Modifier) {
             is SessionState.Connected -> {
                 val connectedState = sessionState as SessionState.Connected
                 val connState = connectedState.dataConnectionState
-                when {
-                    // Auto-navigate to Home ONLY when authenticated via auto-login with saved token
-                    connState == DataConnectionState.Authenticated && connectedState.wasAutoLogin -> {
-                        if (backStack.last() !is NavScreen.Home) {
-                            backStack.clear()
-                            backStack.add(NavScreen.Home)
-                        }
-                    }
-                    // If not authenticated/anonymous, navigate to Settings
-                    backStack.last() !is NavScreen.Settings && connState !is DataConnectionState.Authenticated -> {
+
+                // Auto-navigate to Home ONLY when authenticated via auto-login with saved token
+                if (connState == DataConnectionState.Authenticated && connectedState.wasAutoLogin) {
+                    if (backStack.last() !is NavScreen.Home) {
                         backStack.clear()
-                        backStack.add(NavScreen.Settings)
+                        backStack.add(NavScreen.Home)
                     }
                 }
+                // Don't navigate to Settings here - we handle Disconnected states separately
+                // This prevents navigation during reconnection when auth might not be loaded yet
             }
 
             is SessionState.Connecting -> { /* Do nothing */
@@ -108,29 +109,37 @@ fun NavigationRoot(modifier: Modifier = Modifier) {
     val bottomSheetStrategy = remember { BottomSheetSceneStrategy<NavKey>() }
     val dialogStrategy = remember { DialogSceneStrategy<NavKey>() }
 
-    NavDisplay(
-        modifier = modifier,
-        backStack = backStack,
-        onBack = { backStack.removeLastOrNull() },
-        sceneStrategy = bottomSheetStrategy.then(dialogStrategy),
-        entryDecorators = listOf(
-            rememberSaveableStateHolderNavEntryDecorator(
-                rememberSaveableStateHolder()
-            )
-        ),
-        entryProvider = entryProvider {
-            entry<NavScreen.Home> {
-                HomeScreen(navigateTo = { screen -> backStack.add(screen) })
-            }
-            entry<NavScreen.Settings> {
-                SettingsScreen(
-                    goHome = {
-                        backStack.clear()
-                        backStack.add(NavScreen.Home)
-                    },
-                    exitApp = { exitApp() }
+    Box(modifier = modifier.fillMaxSize()) {
+        // Main navigation content
+        NavDisplay(
+            modifier = Modifier.fillMaxSize(),
+            backStack = backStack,
+            onBack = { backStack.removeLastOrNull() },
+            sceneStrategy = bottomSheetStrategy.then(dialogStrategy),
+            entryDecorators = listOf(
+                rememberSaveableStateHolderNavEntryDecorator(
+                    rememberSaveableStateHolder()
                 )
+            ),
+            entryProvider = entryProvider {
+                entry<NavScreen.Home> {
+                    HomeScreen(navigateTo = { screen -> backStack.add(screen) })
+                }
+                entry<NavScreen.Settings> {
+                    SettingsScreen(
+                        goHome = {
+                            backStack.clear()
+                            backStack.add(NavScreen.Home)
+                        },
+                        exitApp = { exitApp() }
+                    )
+                }
             }
-        }
-    )
+        )
+
+        // Connection status banner - overlays at top, doesn't shrink content
+        ConnectionStatusBanner(
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+    }
 }

@@ -156,11 +156,19 @@ fun CollapsibleQueue(
                     is DataState.Error -> "Error loading queue"
                     is DataState.Loading -> "Loading queue..."
                     is DataState.NoData -> "No items"
+                    is DataState.Stale -> when (queue.data.items) {
+                        is DataState.Error -> "Error loading queue"
+                        is DataState.Loading -> "Loading queue..."
+                        is DataState.NoData -> "Not loaded"
+                        is DataState.Data -> null
+                        is DataState.Stale -> null
+                    }
                     is DataState.Data -> when (queue.data.items) {
                         is DataState.Error -> "Error loading queue"
                         is DataState.Loading -> "Loading queue..."
                         is DataState.NoData -> "Not loaded"
                         is DataState.Data -> null
+                        is DataState.Stale -> null
                     }
                 }
 
@@ -171,8 +179,17 @@ fun CollapsibleQueue(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } ?: run {
-                    val queueData = (queue as DataState.Data).data
-                    val items = (queueData.items as DataState.Data).data
+                    // Handle both Data and Stale states - both contain valid queue data
+                    val queueData = when (queue) {
+                        is DataState.Data -> queue.data
+                        is DataState.Stale -> queue.data
+                        else -> return@run
+                    }
+                    val items = when (val itemsState = queueData.items) {
+                        is DataState.Data -> itemsState.data
+                        is DataState.Stale -> itemsState.data
+                        else -> return@run
+                    }
 
                     if (items.isEmpty()) {
                         Column(

@@ -228,6 +228,12 @@ class HomeScreenViewModel(
                             dataSource.localPlayer.value?.playerId
                         )
 
+                        is DataState.Stale -> PlayersState.Data(
+                            playerData.data,  // Show stale data as normal data
+                            dataSource.selectedPlayerIndex.value,
+                            dataSource.localPlayer.value?.playerId
+                        )
+
                         is DataState.Error -> PlayersState.Error
                         is DataState.Loading -> PlayersState.Loading
                         is DataState.NoData -> PlayersState.Data(emptyList())

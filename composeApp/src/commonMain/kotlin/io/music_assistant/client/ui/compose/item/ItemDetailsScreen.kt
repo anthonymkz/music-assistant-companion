@@ -170,8 +170,14 @@ private fun ItemDetailsContent(
                 }
             }
 
+            is DataState.Stale,
             is DataState.Data -> {
-                val item = itemState.data
+                // Handle both Data and Stale - both contain valid item data
+                val item = when (itemState) {
+                    is DataState.Data -> itemState.data
+                    is DataState.Stale -> itemState.data
+                    else -> return@Box
+                }
 
                 LazyVerticalGrid(
                     modifier = Modifier.fillMaxSize(),

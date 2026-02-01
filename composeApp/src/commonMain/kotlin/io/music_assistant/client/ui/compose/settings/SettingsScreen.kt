@@ -130,21 +130,31 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                 // Track if we've already attempted auto-reconnect
                 var autoReconnectAttempted by remember { mutableStateOf(false) }
 
-                // Auto-reconnect on error if we have saved connection info
+                // Auto-reconnect on error ONLY if user hasn't changed the connection info
+                // This prevents auto-reconnect to old server when user is trying to connect to new server
                 LaunchedEffect(sessionState) {
                     val connInfo = savedConnectionInfo
                     if (sessionState is SessionState.Disconnected.Error &&
                         connInfo != null &&
                         !autoReconnectAttempted
                     ) {
-                        // Mark that we've attempted reconnection
-                        autoReconnectAttempted = true
-                        // Attempt reconnection with saved connection info
-                        viewModel.attemptConnection(
-                            connInfo.host,
-                            connInfo.port.toString(),
-                            connInfo.isTls
-                        )
+                        // Only auto-reconnect if text fields match saved connection info
+                        // (i.e., user hasn't changed anything)
+                        val userChangedConnectionInfo =
+                            ipAddress != connInfo.host ||
+                            port != connInfo.port.toString() ||
+                            isTls != connInfo.isTls
+
+                        if (!userChangedConnectionInfo) {
+                            // User is trying to reconnect to same server - auto-retry
+                            autoReconnectAttempted = true
+                            viewModel.attemptConnection(
+                                connInfo.host,
+                                connInfo.port.toString(),
+                                connInfo.isTls
+                            )
+                        }
+                        // If user changed connection info, don't auto-retry - let them manually retry
                     } else if (sessionState is SessionState.Connected) {
                         // Reset flag on successful connection
                         autoReconnectAttempted = false

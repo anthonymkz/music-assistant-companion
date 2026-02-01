@@ -22,6 +22,7 @@ data class PlayerData(
                         is DataState.Loading -> queue
                         is DataState.Error -> queue
                         is DataState.NoData -> queue
+                        is DataState.Stale -> queue  // Preserve data during stale state
                         is DataState.Data -> {
                             // Preserve queue items if new data doesn't have them loaded
                             val oldQueueData = queue.data

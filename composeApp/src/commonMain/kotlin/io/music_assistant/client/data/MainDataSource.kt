@@ -37,6 +37,7 @@ import io.music_assistant.client.player.sendspin.SendspinConfig
 import io.music_assistant.client.player.sendspin.SendspinConnectionState
 import io.music_assistant.client.settings.SettingsRepository
 import io.music_assistant.client.ui.compose.common.DataState
+import io.music_assistant.client.ui.compose.common.StaleReason
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
 import io.music_assistant.client.ui.compose.common.action.QueueAction
 import io.music_assistant.client.ui.compose.common.providers.ProviderIconModel
@@ -119,6 +120,21 @@ class MainDataSource(
                         } ?: players.sortedBy { player -> player.name }
                     )
                 }
+
+                is DataState.Stale -> {
+                    // Preserve stale state with sorted data
+                    val players = playersState.data
+                    DataState.Stale(
+                        data = sortedIds?.let {
+                            players.sortedBy { player ->
+                                sortedIds.indexOf(player.id).takeIf { it >= 0 }
+                                    ?: Int.MAX_VALUE
+                            }
+                        } ?: players.sortedBy { player -> player.name },
+                        disconnectedAt = playersState.disconnectedAt,
+                        reason = playersState.reason
+                    )
+                }
             }
 
         }.stateIn(
@@ -169,15 +185,25 @@ class MainDataSource(
         // Position calculation loop - runs independently to provide smooth position updates
         launch {
             while (isActive) {
-                // Update QueueInfo with latest calculated positions
-                _queueInfos.update { queues ->
-                    queues.map { queue ->
-                        val tracker = _positionTrackers.value[queue.id]
-                        if (tracker != null) {
-                            val calculatedPos = tracker.calculateCurrentPosition()
-                            queue.copy(elapsedTime = calculatedPos)
-                        } else {
-                            queue
+                // Only update positions if we have live or recovering data
+                val playersState = _serverPlayers.value
+                val shouldUpdatePositions = when (playersState) {
+                    is DataState.Data -> true
+                    is DataState.Stale -> playersState.reason == StaleReason.RECONNECTING
+                    else -> false
+                }
+
+                if (shouldUpdatePositions) {
+                    // Update QueueInfo with latest calculated positions
+                    _queueInfos.update { queues ->
+                        queues.map { queue ->
+                            val tracker = _positionTrackers.value[queue.id]
+                            if (tracker != null) {
+                                val calculatedPos = tracker.calculateCurrentPosition()
+                                queue.copy(elapsedTime = calculatedPos)
+                            } else {
+                                queue
+                            }
                         }
                     }
                 }
@@ -227,24 +253,113 @@ class MainDataSource(
                                     }
                                 )
                             }
+                            is DataState.Stale -> {
+                                // Handle stale state - preserve data structure with stale marker
+                                val groupedPlayersToHide = playersState.data
+                                    .map { (it.groupChildren ?: emptyList()) - it.id }
+                                    .flatten().toSet()
+                                val filteredPlayers = playersState.data
+                                    .filter { it.id !in groupedPlayersToHide }
+                                DataState.Stale(
+                                    data = filteredPlayers.map { player ->
+                                        val newData = PlayerData(
+                                            player = player,
+                                            queue = p.second.find { it.id == player.queueId }
+                                                ?.let { queueInfo ->
+                                                    DataState.Data(
+                                                        Queue(
+                                                            info = queueInfo,
+                                                            items = DataState.NoData()
+                                                        )
+                                                    )
+                                                } ?: DataState.NoData(),
+                                            groupChildren = playersState.data
+                                                .mapNotNull { it.asBindFor(player) }
+
+                                        )
+                                        (oldValues as? DataState.Data)?.data
+                                            ?.firstOrNull { it.player.id == player.id }
+                                            ?.updateFrom(newData) ?: newData
+
+                                    },
+                                    disconnectedAt = playersState.disconnectedAt,
+                                    reason = playersState.reason
+                                )
+                            }
                         }
                     }
                 }
         }
         launch {
-            apiClient.sessionState.collect {
-                when (it) {
+            apiClient.sessionState.collect { sessionState ->
+                log.i { "SessionState changed: ${sessionState::class.simpleName}" }
+
+                when (sessionState) {
                     is SessionState.Connected -> {
+                        // Start watching events (cancel old job if exists to avoid duplicates)
+                        watchJob?.cancel()
                         watchJob = watchApiEvents()
-                        if (it.dataConnectionState == DataConnectionState.Authenticated) {
-                            _serverPlayers.update { DataState.Loading() }
-                            updateProvidersManifests()
-                            initSendspinIfEnabled()
-                            updatePlayersAndQueues()
+
+                        if (sessionState.dataConnectionState == DataConnectionState.Authenticated) {
+                            val currentState = _serverPlayers.value
+
+                            when (currentState) {
+                                is DataState.Stale -> {
+                                    log.i { "Recovering from ${currentState.reason} stale state" }
+
+                                    when (currentState.reason) {
+                                        StaleReason.RECONNECTING -> {
+                                            // Brief disconnection - data is still fresh!
+                                            // Transition stale data back to Data without fetching
+                                            // This prevents the "blink" from reloading the UI
+                                            log.i { "Seamless recovery - reusing cached data" }
+                                            _serverPlayers.update {
+                                                DataState.Data(currentState.data)
+                                            }
+
+                                            // CRITICAL: Re-authenticate the server session
+                                            // New WebSocket connection needs auth command sent
+                                            launch {
+                                                settings.token.value?.let { token ->
+                                                    log.i { "Re-authenticating after reconnection with saved token" }
+                                                    apiClient.authorize(token, isAutoLogin = true)
+                                                } ?: log.w { "No saved token to re-authenticate with" }
+                                            }
+
+                                            // Sendspin is still running, will reconnect on its own
+                                            // Server events will keep data fresh after auth succeeds
+                                        }
+                                        StaleReason.PERSISTENT_ERROR -> {
+                                            // Long disconnection - fetch fresh data
+                                            log.i { "Recovery from persistent error - fetching fresh data" }
+                                            _serverPlayers.update {
+                                                DataState.Data(currentState.data)
+                                            }
+                                            updateProvidersManifests()
+                                            initSendspinIfEnabled()
+                                            updatePlayersAndQueues()
+                                        }
+                                    }
+                                }
+                                is DataState.Data -> {
+                                    // Already have data (shouldn't happen, but handle gracefully)
+                                    log.w { "Connected while already in Data state - refreshing anyway" }
+                                    updateProvidersManifests()
+                                    updatePlayersAndQueues()
+                                    // Don't reinit Sendspin if already running
+                                }
+                                is DataState.Loading, is DataState.NoData, is DataState.Error -> {
+                                    // Fresh connection or error recovery - show loading
+                                    _serverPlayers.update { DataState.Loading() }
+                                    updateProvidersManifests()
+                                    initSendspinIfEnabled()
+                                    updatePlayersAndQueues()
+                                }
+                            }
                         } else {
+                            // Not authenticated yet - clear data
                             stopSendspin()
-                            _serverPlayers.update { DataState.NoData() }
-                            _queueInfos.update { emptyList() }
+                            clearAllData()
                             updateJob?.cancel()
                             updateJob = null
                             watchJob?.cancel()
@@ -253,12 +368,48 @@ class MainDataSource(
                     }
 
                     is SessionState.Reconnecting -> {
-                        // Preserve state during reconnection - don't stop anything!
-                        // Sendspin keeps playing, jobs keep running
-                        // When reconnected, Connected branch will re-initialize if needed
+                        val currentState = _serverPlayers.value
+
+                        when (currentState) {
+                            is DataState.Data -> {
+                                // Transition to Stale(RECONNECTING) - preserve data
+                                log.i { "Data → Stale(RECONNECTING): preserving ${(currentState.data as? List<*>)?.size ?: 0} players" }
+                                _serverPlayers.update {
+                                    DataState.Stale(
+                                        data = currentState.data,
+                                        disconnectedAt = currentTimeMillis(),
+                                        reason = StaleReason.RECONNECTING
+                                    )
+                                }
+                            }
+                            is DataState.Stale -> {
+                                // Already stale - update reason if needed, preserve original disconnectedAt
+                                if (currentState.reason != StaleReason.RECONNECTING) {
+                                    log.i { "Stale(${currentState.reason}) → Stale(RECONNECTING)" }
+                                    _serverPlayers.update {
+                                        DataState.Stale(
+                                            data = currentState.data,
+                                            disconnectedAt = currentState.disconnectedAt,  // KEEP ORIGINAL
+                                            reason = StaleReason.RECONNECTING
+                                        )
+                                    }
+                                }
+                                // else: already Stale(RECONNECTING), do nothing
+                            }
+                            is DataState.Loading, is DataState.NoData, is DataState.Error -> {
+                                // No data to preserve - stay in current state
+                                log.d { "Reconnecting with no data to preserve (state: ${currentState::class.simpleName})" }
+                            }
+                        }
+
+                        // KEEP: Sendspin alive, jobs running, position tracking active
+                        // watchJob will be idle (no events from disconnected WebSocket)
+                        // updateJob keeps running for position calculations
                     }
 
                     SessionState.Connecting -> {
+                        // Fresh connection attempt - show loading
+                        log.i { "Connecting - stopping Sendspin and showing loading state" }
                         stopSendspin()
                         updateJob?.cancel()
                         updateJob = null
@@ -268,13 +419,71 @@ class MainDataSource(
                     }
 
                     is SessionState.Disconnected -> {
-                        stopSendspin()
-                        _serverPlayers.update { DataState.NoData() }
-                        _queueInfos.update { emptyList() }
-                        updateJob?.cancel()
-                        updateJob = null
-                        watchJob?.cancel()
-                        watchJob = null
+                        when (sessionState) {
+                            SessionState.Disconnected.ByUser -> {
+                                // Intentional logout - clear everything
+                                log.i { "Disconnected by user - clearing all data" }
+                                stopSendspin()
+                                clearAllData()
+                                updateJob?.cancel()
+                                updateJob = null
+                                watchJob?.cancel()
+                                watchJob = null
+                            }
+
+                            is SessionState.Disconnected.Error -> {
+                                // Persistent error after max reconnect attempts
+                                val currentState = _serverPlayers.value
+
+                                when (currentState) {
+                                    is DataState.Data, is DataState.Stale -> {
+                                        // Preserve data as Stale(PERSISTENT_ERROR)
+                                        val data = when (currentState) {
+                                            is DataState.Data -> currentState.data
+                                            is DataState.Stale -> currentState.data
+                                            else -> throw IllegalStateException()
+                                        }
+                                        val originalDisconnectedAt = (currentState as? DataState.Stale)?.disconnectedAt
+                                            ?: currentTimeMillis()
+
+                                        log.w { "Persistent connection error - preserving ${(data as? List<*>)?.size ?: 0} players as stale" }
+                                        _serverPlayers.update {
+                                            DataState.Stale(
+                                                data = data,
+                                                disconnectedAt = originalDisconnectedAt,  // Preserve original
+                                                reason = StaleReason.PERSISTENT_ERROR
+                                            )
+                                        }
+
+                                        // Stop Sendspin (can't stream without connection)
+                                        stopSendspin()
+                                    }
+                                    is DataState.Loading, is DataState.NoData, is DataState.Error -> {
+                                        // No data to preserve - transition to NoData
+                                        log.w { "Persistent error with no data to preserve" }
+                                        _serverPlayers.update { DataState.NoData() }
+                                        _queueInfos.update { emptyList() }
+                                    }
+                                }
+
+                                // Cancel jobs (no point running without connection)
+                                updateJob?.cancel()
+                                updateJob = null
+                                watchJob?.cancel()
+                                watchJob = null
+                            }
+
+                            SessionState.Disconnected.Initial, SessionState.Disconnected.NoServerData -> {
+                                // App startup or no server configured - clear all
+                                log.i { "Disconnected (${sessionState::class.simpleName}) - clearing data" }
+                                stopSendspin()
+                                clearAllData()
+                                updateJob?.cancel()
+                                updateJob = null
+                                watchJob?.cancel()
+                                watchJob = null
+                            }
+                        }
                     }
                 }
             }
@@ -293,8 +502,17 @@ class MainDataSource(
         }
         launch {
             selectedPlayerIndex.filterNotNull().collect { index ->
-                (playersData.value as? DataState.Data)?.data?.let { list ->
-                    refreshPlayerQueueItems(list[index])
+                // Only refresh queue if we have live data and are authenticated
+                // Don't try to load during Stale state - will error with auth issues
+                val sessionState = apiClient.sessionState.value
+                val isAuthenticated = (sessionState as? SessionState.Connected)?.dataConnectionState == DataConnectionState.Authenticated
+
+                if (isAuthenticated) {
+                    (playersData.value as? DataState.Data)?.data?.let { list ->
+                        refreshPlayerQueueItems(list[index])
+                    }
+                } else {
+                    log.d { "Skipping queue refresh - not authenticated (state: ${sessionState::class.simpleName})" }
                 }
             }
         }
@@ -311,6 +529,17 @@ class MainDataSource(
                 }
             }
         }
+    }
+
+    /**
+     * Clear all cached data.
+     */
+    private fun clearAllData() {
+        log.i { "Clearing all cached data" }
+        _serverPlayers.update { DataState.NoData() }
+        _queueInfos.update { emptyList() }
+        _positionTrackers.update { emptyMap() }
+        // Note: _providersIcons deliberately NOT cleared (static data)
     }
 
     /**
@@ -337,11 +566,29 @@ class MainDataSource(
             return
         }
 
-        // Stop existing client if any
+        // Stop existing client if any (but preserve if it's reconnecting)
         sendspinClient?.let { existing ->
-            if (existing.connectionState.value is SendspinConnectionState.Connected) {
-                // Already connected, don't reconnect
-                return
+            val state = existing.connectionState.value
+            when (state) {
+                is SendspinConnectionState.Connected -> {
+                    // Already connected, don't reconnect
+                    log.d { "Sendspin already connected - skipping reinitialization" }
+                    return
+                }
+                is SendspinConnectionState.Error -> {
+                    // Check if it's actually reconnecting (error message contains "Reconnecting")
+                    if (state.error.message?.contains("Reconnecting", ignoreCase = true) == true) {
+                        log.d { "Sendspin is reconnecting - skipping reinitialization" }
+                        return
+                    }
+                    // Otherwise, it's a real error - stop and recreate
+                    log.i { "Sendspin has error: ${state.error.message} - reinitializing" }
+                }
+                is SendspinConnectionState.Advertising,
+                SendspinConnectionState.Idle -> {
+                    // Not fully initialized yet, will recreate
+                    log.i { "Sendspin in ${state::class.simpleName} state - reinitializing" }
+                }
             }
             existing.stop()
             existing.close()
@@ -887,7 +1134,8 @@ class MainDataSource(
                                         when (currentState) {
                                             is DataState.Error,
                                             is DataState.Loading,
-                                            is DataState.NoData -> currentState
+                                            is DataState.NoData,
+                                            is DataState.Stale -> currentState
 
                                             is DataState.Data -> DataState.Data(
                                                 currentState.data.map { playerData ->
@@ -924,7 +1172,8 @@ class MainDataSource(
             when (currentState) {
                 is DataState.Error,
                 is DataState.Loading,
-                is DataState.NoData -> currentState
+                is DataState.NoData,
+                is DataState.Stale -> currentState
 
                 is DataState.Data -> DataState.Data(
                     currentState.data.map { playerData ->
@@ -1035,7 +1284,8 @@ class MainDataSource(
                     when (currentState) {
                         is DataState.Error,
                         is DataState.Loading,
-                        is DataState.NoData -> currentState
+                        is DataState.NoData,
+                        is DataState.Stale -> currentState
 
                         is DataState.Data -> DataState.Data(
                             currentState.data.map { playerData ->
