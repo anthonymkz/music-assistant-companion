@@ -3,7 +3,7 @@ package io.music_assistant.client.player.sendspin.protocol
 import co.touchlab.kermit.Logger
 import io.music_assistant.client.player.sendspin.ClockSynchronizer
 import io.music_assistant.client.player.sendspin.ProtocolState
-import io.music_assistant.client.player.sendspin.connection.WebSocketHandler
+import io.music_assistant.client.player.sendspin.connection.SendspinWsHandler
 import io.music_assistant.client.player.sendspin.model.ClientCommandMessage
 import io.music_assistant.client.player.sendspin.model.ClientGoodbyeMessage
 import io.music_assistant.client.player.sendspin.model.ClientHelloMessage
@@ -52,7 +52,7 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration.Companion.seconds
 
 class MessageDispatcher(
-    private val webSocketHandler: WebSocketHandler,
+    private val sendspinWsHandler: SendspinWsHandler,
     private val clockSynchronizer: ClockSynchronizer,
     private val clientCapabilities: ClientHelloPayload,
     private val initialVolume: Int = 100
@@ -89,7 +89,7 @@ class MessageDispatcher(
         MutableSharedFlow<ServerCommandMessage>(extraBufferCapacity = 5)
     val serverCommandEvent: Flow<ServerCommandMessage> = _serverCommandEvent.asSharedFlow()
 
-    suspend fun start() {
+    fun start() {
         logger.i { "Starting MessageDispatcher" }
         startMessageListener()
     }
@@ -105,7 +105,7 @@ class MessageDispatcher(
         messageListenerJob?.cancel()
         messageListenerJob = launch {
             try {
-                webSocketHandler.textMessages.collect { text ->
+                sendspinWsHandler.textMessages.collect { text ->
                     try {
                         handleTextMessage(text)
                     } catch (e: Exception) {
@@ -200,7 +200,7 @@ class MessageDispatcher(
 
         val message = ClientHelloMessage(payload = clientCapabilities)
         val json = myJson.encodeToString(message)
-        webSocketHandler.sendText(json)
+        sendspinWsHandler.sendText(json)
     }
 
     suspend fun sendTime() {
@@ -209,7 +209,7 @@ class MessageDispatcher(
             payload = ClientTimePayload(clientTransmitted = clientTransmitted)
         )
         val json = myJson.encodeToString(message)
-        webSocketHandler.sendText(json)
+        sendspinWsHandler.sendText(json)
     }
 
     suspend fun sendState(state: PlayerStateObject) {
@@ -218,7 +218,7 @@ class MessageDispatcher(
         )
         val json = myJson.encodeToString(message)
         logger.d { "Sending client/state: $json" }
-        webSocketHandler.sendText(json)
+        sendspinWsHandler.sendText(json)
     }
 
     suspend fun sendGoodbye(reason: String) {
@@ -227,7 +227,7 @@ class MessageDispatcher(
             payload = GoodbyePayload(reason = reason)
         )
         val json = myJson.encodeToString(message)
-        webSocketHandler.sendText(json)
+        sendspinWsHandler.sendText(json)
     }
 
     suspend fun sendCommand(command: String, value: CommandValue?) {
@@ -236,7 +236,7 @@ class MessageDispatcher(
             payload = CommandPayload(command = command, value = value)
         )
         val json = myJson.encodeToString(message)
-        webSocketHandler.sendText(json)
+        sendspinWsHandler.sendText(json)
     }
 
     // Message handlers
@@ -270,7 +270,7 @@ class MessageDispatcher(
                 try {
                     sendTime()
                     delay(1.seconds)
-                } catch (e: IllegalStateException) {
+                } catch (_: IllegalStateException) {
                     // WebSocket not connected, stop clock sync
                     logger.w { "Clock sync stopped: WebSocket not connected" }
                     break

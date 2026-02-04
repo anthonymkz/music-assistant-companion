@@ -32,11 +32,11 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration.Companion.seconds
 
-class WebSocketHandler(
+class SendspinWsHandler(
     private val serverUrl: String
 ) : CoroutineScope {
 
-    private val logger = Logger.withTag("WebSocketHandler")
+    private val logger = Logger.withTag("SendspinWsHandler")
     private val supervisorJob = SupervisorJob()
 
     override val coroutineContext: CoroutineContext
@@ -134,7 +134,7 @@ class WebSocketHandler(
                         is Frame.Ping, is Frame.Pong -> {
                             // Handled automatically by Ktor
                         }
-                        
+
                         else -> {
                             // Ignore other frame types
                         }
@@ -148,7 +148,8 @@ class WebSocketHandler(
                 }
 
                 // Network error - auto-reconnect!
-                Logger.withTag("WebSocketHandler").e { "❌ WS ERROR: ${e.message} - will auto-reconnect" }
+                Logger.withTag("WebSocketHandler")
+                    .e { "❌ WS ERROR: ${e.message} - will auto-reconnect" }
                 _connectionState.value = WebSocketState.Reconnecting(reconnectAttempts)
 
                 attemptReconnect()
@@ -235,7 +236,8 @@ class WebSocketHandler(
                     session = wsSession
 
                     // Success!
-                    Logger.withTag("WebSocketHandler").e { "✅ RECONNECTED successfully after $reconnectAttempts attempts" }
+                    Logger.withTag("WebSocketHandler")
+                        .e { "✅ RECONNECTED successfully after $reconnectAttempts attempts" }
                     reconnectAttempts = 0
                     _connectionState.value = WebSocketState.Connected
 

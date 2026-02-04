@@ -505,7 +505,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
 
                     // Wait a bit for connection to establish (or fail)
                     // The connect() method launches async, so we give it time to complete
-                    kotlinx.coroutines.delay(2000L)
+                    delay(2000L)
 
                     // Check if we successfully connected
                     if (_sessionState.value is SessionState.Connected) {

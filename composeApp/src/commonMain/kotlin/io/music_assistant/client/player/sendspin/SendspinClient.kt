@@ -3,7 +3,7 @@ package io.music_assistant.client.player.sendspin
 import co.touchlab.kermit.Logger
 import io.music_assistant.client.player.MediaPlayerController
 import io.music_assistant.client.player.sendspin.audio.AudioStreamManager
-import io.music_assistant.client.player.sendspin.connection.WebSocketHandler
+import io.music_assistant.client.player.sendspin.connection.SendspinWsHandler
 import io.music_assistant.client.player.sendspin.model.CommandValue
 import io.music_assistant.client.player.sendspin.model.PlayerStateObject
 import io.music_assistant.client.player.sendspin.model.PlayerStateValue
@@ -37,7 +37,7 @@ class SendspinClient(
         get() = Dispatchers.Default + supervisorJob
 
     // Components
-    private var webSocketHandler: WebSocketHandler? = null
+    private var sendspinWsHandler: SendspinWsHandler? = null
     private var messageDispatcher: MessageDispatcher? = null
     private val clockSynchronizer = ClockSynchronizer()
     private val audioStreamManager = AudioStreamManager(clockSynchronizer, mediaPlayerController)
@@ -48,7 +48,6 @@ class SendspinClient(
     val connectionState: StateFlow<SendspinConnectionState> = _connectionState.asStateFlow()
 
     private val _playbackState = MutableStateFlow<SendspinPlaybackState>(SendspinPlaybackState.Idle)
-    val playbackState: StateFlow<SendspinPlaybackState> = _playbackState.asStateFlow()
 
     // Exposed event for when playback stops due to error (e.g., audio output disconnected)
     // MainDataSource should monitor this to pause the MA server player
@@ -65,9 +64,6 @@ class SendspinClient(
 
     val metadata: StateFlow<StreamMetadataPayload?>
         get() = messageDispatcher?.streamMetadata ?: MutableStateFlow(null)
-
-    val bufferState: StateFlow<BufferState>
-        get() = audioStreamManager.bufferState
 
     suspend fun start() {
         if (!config.isValid) {
@@ -100,13 +96,13 @@ class SendspinClient(
             logger.i { "Initializing with system volume: $currentVolume%" }
 
             // Create WebSocket handler
-            val wsHandler = WebSocketHandler(serverUrl)
-            webSocketHandler = wsHandler
+            val wsHandler = SendspinWsHandler(serverUrl)
+            sendspinWsHandler = wsHandler
 
             // Create message dispatcher
             val capabilities = SendspinCapabilities.buildClientHello(config, config.codecPreference)
             val dispatcher = MessageDispatcher(
-                webSocketHandler = wsHandler,
+                sendspinWsHandler = wsHandler,
                 clockSynchronizer = clockSynchronizer,
                 clientCapabilities = capabilities,
                 initialVolume = currentVolume
@@ -148,7 +144,7 @@ class SendspinClient(
 
     private fun monitorWebSocketState() {
         launch {
-            webSocketHandler?.connectionState?.collect { wsState ->
+            sendspinWsHandler?.connectionState?.collect { wsState ->
                 logger.d { "WebSocket state: $wsState" }
                 when (wsState) {
                     WebSocketState.Connected -> {
@@ -305,7 +301,7 @@ class SendspinClient(
 
     private fun monitorBinaryMessages() {
         launch {
-            webSocketHandler?.binaryMessages?.collect { data ->
+            sendspinWsHandler?.binaryMessages?.collect { data ->
                 audioStreamManager.processBinaryMessage(data)
 
                 // Update playback state based on sync quality
@@ -433,9 +429,9 @@ class SendspinClient(
         messageDispatcher?.close()
         messageDispatcher = null
 
-        webSocketHandler?.disconnect()
-        webSocketHandler?.close()
-        webSocketHandler = null
+        sendspinWsHandler?.disconnect()
+        sendspinWsHandler?.close()
+        sendspinWsHandler = null
 
         clockSynchronizer.reset()
     }
