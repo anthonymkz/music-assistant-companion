@@ -26,6 +26,85 @@ sealed interface Result<out T> {
 // Minimize expect/actual - keep code in commonMain
 ```
 
+### Nullability - Use Kotlin Idioms, NOT Java Style
+
+**NEVER write Java-style null checks:**
+```kotlin
+// ❌ WRONG - Java style
+if (player != null) {
+    player.play()
+}
+
+// ❌ WRONG - verbose
+if (dispatcher != null) {
+    dispatcher.sendMessage()
+} else {
+    log("Dispatcher is null")
+}
+```
+
+**ALWAYS use Kotlin null-safety operators:**
+```kotlin
+// ✅ CORRECT - safe call
+player?.play()
+
+// ✅ CORRECT - safe call with let
+player?.let {
+    it.play()
+    it.updateState()
+}
+
+// ✅ CORRECT - let with elvis for else branch
+dispatcher?.let {
+    it.sendMessage()
+    log("Message sent")
+} ?: log("Dispatcher is null")
+
+// ✅ CORRECT - elvis operator for default values
+val volume = config?.volume ?: 100
+
+// ✅ CORRECT - early return
+val player = getPlayer() ?: return
+player.play()  // player is smart-cast to non-null
+
+// ✅ CORRECT - elvis with custom action
+val token = settings.token.value ?: run {
+    log.w { "No token available" }
+    return
+}
+```
+
+**Complex null handling patterns:**
+```kotlin
+// ✅ Multiple nullables with takeIf/takeUnless
+val result = service
+    ?.getData()
+    ?.takeIf { it.isValid }
+    ?.process()
+    ?: getDefaultResult()
+
+// ✅ Run block for multiple statements in else
+connection?.let {
+    it.send(message)
+    it.flush()
+} ?: run {
+    log.e { "Connection is null" }
+    reconnect()
+}
+
+// ✅ Also for side effects on non-null
+dispatcher?.sendHello()?.also {
+    log.i { "Hello sent successfully" }
+}
+```
+
+**Scope functions cheat sheet:**
+- `let` - transform nullable to non-null context, returns result
+- `run` - execute block and return result (for else branch with elvis)
+- `also` - perform side effects, returns original object
+- `apply` - configure object, returns object
+- `takeIf` / `takeUnless` - conditional filtering
+
 ## Compose Conventions
 
 ```kotlin

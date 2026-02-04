@@ -10,6 +10,10 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Shape that cuts a vertical strip from the right side.
@@ -140,10 +144,10 @@ class WavyHexagonShape : Shape {
 
             // Calculate 6 points of hexagon
             val points = List(6) { i ->
-                val angle = (i * 60f - 30f) * (Math.PI / 180f).toFloat()
+                val angle = (i * 60f - 30f) * (PI / 180f).toFloat()
                 Offset(
-                    centerX + radius * kotlin.math.cos(angle),
-                    centerY + radius * kotlin.math.sin(angle)
+                    centerX + radius * cos(angle),
+                    centerY + radius * sin(angle)
                 )
             }
 
@@ -168,12 +172,12 @@ class WavyHexagonShape : Shape {
                     val baseY = current.y + (next.y - current.y) * t
 
                     // Calculate perpendicular offset for sine wave
-                    val edgeAngle = kotlin.math.atan2(next.y - current.y, next.x - current.x)
-                    val perpAngle = edgeAngle + Math.PI.toFloat() / 2f
-                    val waveOffset = amplitude * kotlin.math.sin((t * frequency * 2.0 * Math.PI).toFloat())
+                    val edgeAngle = atan2(next.y - current.y, next.x - current.x)
+                    val perpAngle = edgeAngle + PI.toFloat() / 2f
+                    val waveOffset = amplitude * sin((t * frequency * 2.0 * PI).toFloat())
 
-                    val x = baseX + waveOffset * kotlin.math.cos(perpAngle)
-                    val y = baseY + waveOffset * kotlin.math.sin(perpAngle)
+                    val x = baseX + waveOffset * cos(perpAngle)
+                    val y = baseY + waveOffset * sin(perpAngle)
 
                     lineTo(x, y)
                 }

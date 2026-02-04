@@ -186,8 +186,7 @@ class MainDataSource(
         launch {
             while (isActive) {
                 // Only update positions if we have live or recovering data
-                val playersState = _serverPlayers.value
-                val shouldUpdatePositions = when (playersState) {
+                val shouldUpdatePositions = when (val playersState = _serverPlayers.value) {
                     is DataState.Data -> true
                     is DataState.Stale -> playersState.reason == StaleReason.RECONNECTING
                     else -> false
@@ -301,9 +300,7 @@ class MainDataSource(
                         watchJob = watchApiEvents()
 
                         if (sessionState.dataConnectionState == DataConnectionState.Authenticated) {
-                            val currentState = _serverPlayers.value
-
-                            when (currentState) {
+                            when (val currentState = _serverPlayers.value) {
                                 is DataState.Stale -> {
                                     log.i { "Recovering from ${currentState.reason} stale state" }
 
@@ -368,9 +365,7 @@ class MainDataSource(
                     }
 
                     is SessionState.Reconnecting -> {
-                        val currentState = _serverPlayers.value
-
-                        when (currentState) {
+                        when (val currentState = _serverPlayers.value) {
                             is DataState.Data -> {
                                 // Transition to Stale(RECONNECTING) - preserve data
                                 log.i { "Data → Stale(RECONNECTING): preserving ${(currentState.data as? List<*>)?.size ?: 0} players" }
@@ -433,9 +428,7 @@ class MainDataSource(
 
                             is SessionState.Disconnected.Error -> {
                                 // Persistent error after max reconnect attempts
-                                val currentState = _serverPlayers.value
-
-                                when (currentState) {
+                                when (val currentState = _serverPlayers.value) {
                                     is DataState.Data, is DataState.Stale -> {
                                         // Preserve data as Stale(PERSISTENT_ERROR)
                                         val data = when (currentState) {
@@ -568,8 +561,7 @@ class MainDataSource(
 
         // Stop existing client if any (but preserve if it's reconnecting)
         sendspinClient?.let { existing ->
-            val state = existing.connectionState.value
-            when (state) {
+            when (val state = existing.connectionState.value) {
                 is SendspinConnectionState.Connected -> {
                     // Already connected, don't reconnect
                     log.d { "Sendspin already connected - skipping reinitialization" }
