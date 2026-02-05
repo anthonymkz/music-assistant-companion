@@ -215,6 +215,13 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                         when (dataConnection) {
                             DataConnectionState.Authenticated -> {
                                 // State 4: Connected and authenticated
+
+                                // WebRTC Remote Access Section
+                                WebRTCSection(
+                                    viewModel = viewModel,
+                                )
+
+                                // Local Player Section
                                 SendspinSection(
                                     viewModel = viewModel,
                                 )
@@ -615,6 +622,99 @@ private fun SendspinSection(
             ) {
                 Text("Enable local player")
             }
+        }
+    }
+}
+
+@Composable
+private fun WebRTCSection(
+    modifier: Modifier = Modifier,
+    viewModel: SettingsViewModel,
+) {
+    val webrtcEnabled by viewModel.webrtcEnabled.collectAsStateWithLifecycle()
+    val webrtcRemoteId by viewModel.webrtcRemoteId.collectAsStateWithLifecycle()
+
+    SectionCard(modifier = modifier) {
+        SectionTitle("WebRTC Remote Access")
+
+        Text(
+            text = "Connect from anywhere without port forwarding",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+
+        // Enable toggle
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Enable WebRTC",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            androidx.compose.material3.Switch(
+                checked = webrtcEnabled,
+                onCheckedChange = { viewModel.setWebrtcEnabled(it) }
+            )
+        }
+
+        if (webrtcEnabled) {
+            // Remote ID input field
+            TextField(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                value = webrtcRemoteId,
+                onValueChange = { viewModel.setWebrtcRemoteId(it.uppercase()) },
+                label = { Text("Remote ID") },
+                placeholder = { Text("MA-XXXX-XXXX") },
+                singleLine = true,
+                colors = TextFieldDefaults.colors(
+                    focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                ),
+                supportingText = {
+                    Text(
+                        text = "Enter the Remote ID from your Music Assistant server settings",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                isError = webrtcRemoteId.isNotBlank() && !io.music_assistant.client.webrtc.model.RemoteId.isValid(webrtcRemoteId)
+            )
+
+            // Validation message
+            if (webrtcRemoteId.isNotBlank() && !io.music_assistant.client.webrtc.model.RemoteId.isValid(webrtcRemoteId)) {
+                Text(
+                    text = "Invalid Remote ID format",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
+            // Info text about WebRTC
+            Text(
+                text = "Note: WebRTC uses cloud signaling (wss://signaling.music-assistant.io) with end-to-end encryption. Works through most firewalls and NATs.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            // TODO: Add connection button and status when WebRTC client is implemented
+            /*
+            Button(
+                onClick = { viewModel.connectViaWebRTC() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = io.music_assistant.client.webrtc.model.RemoteId.isValid(webrtcRemoteId)
+            ) {
+                Text("Connect via WebRTC")
+            }
+            */
         }
     }
 }

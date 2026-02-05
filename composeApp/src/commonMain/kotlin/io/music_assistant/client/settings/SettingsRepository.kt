@@ -177,4 +177,25 @@ class SettingsRepository(
         settings.putBoolean("sendspin_use_custom_connection", enabled)
         _sendspinUseCustomConnection.update { enabled }
     }
+
+    // WebRTC Remote Access settings
+    private val _webrtcEnabled = MutableStateFlow(
+        settings.getBoolean("webrtc_enabled", false)
+    )
+    val webrtcEnabled = _webrtcEnabled.asStateFlow()
+
+    fun setWebrtcEnabled(enabled: Boolean) {
+        settings.putBoolean("webrtc_enabled", enabled)
+        _webrtcEnabled.update { enabled }
+    }
+
+    private val _webrtcRemoteId = MutableStateFlow(
+        settings.getString("webrtc_remote_id", "")
+    )
+    val webrtcRemoteId = _webrtcRemoteId.asStateFlow()
+
+    fun setWebrtcRemoteId(remoteId: String) {
+        settings.putString("webrtc_remote_id", remoteId)
+        _webrtcRemoteId.update { remoteId }
+    }
 }
