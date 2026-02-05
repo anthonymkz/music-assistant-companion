@@ -12,10 +12,17 @@ data class SendspinConfig(
     val codecPreference: Codec,
 
     // Server connection settings
-    val serverHost: String = "", 
-    val serverPort: Int = 8927, 
+    val serverHost: String = "",
+    val serverPort: Int = 8095,
     val serverPath: String = "/sendspin",
-    val useTls: Boolean = false
+    val useTls: Boolean = false,
+
+    // Custom connection mode
+    val useCustomConnection: Boolean = false,
+
+    // Auth settings (for proxy mode)
+    val authToken: String? = null,
+    val mainConnectionPort: Int? = null
 ) {
     fun buildServerUrl(): String {
         return if (serverHost.isNotEmpty()) {
@@ -25,6 +32,10 @@ data class SendspinConfig(
             ""
         }
     }
+
+    // Proxy mode detection: if port matches main connection port, we're using the proxy
+    val requiresAuth: Boolean
+        get() = mainConnectionPort != null && serverPort == mainConnectionPort
 
     val isValid: Boolean
         get() = enabled && serverHost.isNotEmpty() && deviceName.isNotEmpty()

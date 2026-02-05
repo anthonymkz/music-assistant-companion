@@ -105,7 +105,9 @@ class SendspinClient(
                 sendspinWsHandler = wsHandler,
                 clockSynchronizer = clockSynchronizer,
                 clientCapabilities = capabilities,
-                initialVolume = currentVolume
+                initialVolume = currentVolume,
+                authToken = config.authToken,
+                requiresAuth = config.requiresAuth
             )
             messageDispatcher = dispatcher
 
@@ -115,8 +117,14 @@ class SendspinClient(
             // Start message dispatcher
             dispatcher.start()
 
-            // Send hello
-            dispatcher.sendHello()
+            // Send auth (proxy mode) or hello (direct mode)
+            if (config.requiresAuth) {
+                logger.i { "Using proxy mode - sending auth first" }
+                dispatcher.sendAuth()
+            } else {
+                logger.i { "Using direct mode - sending hello" }
+                dispatcher.sendHello()
+            }
 
             // Monitor WebSocket connection state (for reconnection coordination)
             monitorWebSocketState()

@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import io.music_assistant.client.player.sendspin.ClockSynchronizer
 import io.music_assistant.client.player.sendspin.ProtocolState
 import io.music_assistant.client.player.sendspin.connection.SendspinWsHandler
+import io.music_assistant.client.player.sendspin.model.ClientAuthMessage
 import io.music_assistant.client.player.sendspin.model.ClientCommandMessage
 import io.music_assistant.client.player.sendspin.model.ClientGoodbyeMessage
 import io.music_assistant.client.player.sendspin.model.ClientHelloMessage
@@ -18,6 +19,7 @@ import io.music_assistant.client.player.sendspin.model.GoodbyePayload
 import io.music_assistant.client.player.sendspin.model.GroupUpdateMessage
 import io.music_assistant.client.player.sendspin.model.PlayerStateObject
 import io.music_assistant.client.player.sendspin.model.PlayerStateValue
+import io.music_assistant.client.player.sendspin.model.ServerAuthOkMessage
 import io.music_assistant.client.player.sendspin.model.ServerCommandMessage
 import io.music_assistant.client.player.sendspin.model.ServerHelloMessage
 import io.music_assistant.client.player.sendspin.model.ServerHelloPayload
@@ -55,7 +57,9 @@ class MessageDispatcher(
     private val sendspinWsHandler: SendspinWsHandler,
     private val clockSynchronizer: ClockSynchronizer,
     private val clientCapabilities: ClientHelloPayload,
-    private val initialVolume: Int = 100
+    private val initialVolume: Int = 100,
+    private val authToken: String? = null,
+    private val requiresAuth: Boolean = false
 ) : CoroutineScope {
 
     private val logger = Logger.withTag("MessageDispatcher")
@@ -133,6 +137,11 @@ class MessageDispatcher(
                 ?: throw IllegalArgumentException("Message missing 'type' field")
 
             when (type) {
+                "auth_ok" -> {
+                    val message = myJson.decodeFromJsonElement<ServerAuthOkMessage>(json)
+                    handleAuthOk(message)
+                }
+
                 "server/hello" -> {
                     val message = myJson.decodeFromJsonElement<ServerHelloMessage>(json)
                     handleServerHello(message)
@@ -194,6 +203,23 @@ class MessageDispatcher(
 
     // Outgoing messages
 
+    suspend fun sendAuth() {
+        if (!requiresAuth || authToken == null) {
+            logger.w { "sendAuth called but auth not required or token missing" }
+            return
+        }
+
+        logger.i { "Sending auth message (proxy mode)" }
+        _protocolState.value = ProtocolState.AwaitingAuth
+
+        val message = ClientAuthMessage(
+            token = authToken,
+            clientId = clientCapabilities.clientId
+        )
+        val json = myJson.encodeToString(message)
+        sendspinWsHandler.sendText(json)
+    }
+
     suspend fun sendHello() {
         logger.i { "Sending client/hello" }
         _protocolState.value = ProtocolState.AwaitingServerHello
@@ -240,6 +266,12 @@ class MessageDispatcher(
     }
 
     // Message handlers
+
+    private suspend fun handleAuthOk(message: ServerAuthOkMessage) {
+        logger.i { "Received auth_ok - authentication successful" }
+        // Auth successful, now send hello
+        sendHello()
+    }
 
     private suspend fun handleServerHello(message: ServerHelloMessage) {
         logger.i { "Received server/hello from ${message.payload.name}" }

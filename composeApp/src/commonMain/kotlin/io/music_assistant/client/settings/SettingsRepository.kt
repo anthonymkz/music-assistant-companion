@@ -107,7 +107,7 @@ class SettingsRepository(
     }
 
     private val _sendspinPort = MutableStateFlow(
-        settings.getInt("sendspin_port", 8927)
+        settings.getInt("sendspin_port", 8095)
     )
     val sendspinPort = _sendspinPort.asStateFlow()
 
@@ -159,5 +159,22 @@ class SettingsRepository(
     fun setSendspinUseTls(enabled: Boolean) {
         settings.putBoolean("sendspin_use_tls", enabled)
         _sendspinUseTls.update { enabled }
+    }
+
+    // Migration logic: if user has custom host or non-default port, they're using custom connection
+    private val _sendspinUseCustomConnection = MutableStateFlow(
+        settings.getBooleanOrNull("sendspin_use_custom_connection") ?: run {
+            val hasCustomHost = settings.getString("sendspin_host", "").isNotEmpty()
+            val hasCustomPort = settings.getInt("sendspin_port", 8095) != 8095
+            val useCustom = hasCustomHost || hasCustomPort
+            settings.putBoolean("sendspin_use_custom_connection", useCustom)
+            useCustom
+        }
+    )
+    val sendspinUseCustomConnection = _sendspinUseCustomConnection.asStateFlow()
+
+    fun setSendspinUseCustomConnection(enabled: Boolean) {
+        settings.putBoolean("sendspin_use_custom_connection", enabled)
+        _sendspinUseCustomConnection.update { enabled }
     }
 }

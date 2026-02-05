@@ -116,10 +116,17 @@ The built-in player functionality uses the Sendspin multi-room audio protocol:
 - **Management**: `MainDataSource` singleton manages Sendspin lifecycle (not individual services)
 - **Integration point**: `HomeScreenViewModel` interacts with Sendspin via MainDataSource
 - **Configuration**: Sendspin settings in `SettingsRepository` and `SettingsScreen` (see `.claude/settings-screen.md` for detailed UI documentation)
-- **Connection**: Direct WebSocket to Music Assistant server (same IP as main connection)
+- **Connection Modes**:
+  - **Proxy mode (default)**: Uses main connection (host/port/TLS) + path `/sendspin`
+    - Requires authentication with token before protocol handshake
+    - Port 8095 by default (same as main API)
+  - **Custom mode**: Separate host/port configuration
+    - Supports direct connection to standalone Sendspin server (port 8927)
+    - Auto-detects proxy mode if port matches main connection
+- **Authentication**: When using proxy mode, sends `auth` message with token before `client/hello`
 - **Platform-specific**: `MediaPlayerController` has expect/actual for raw PCM streaming
   - Android: Uses `AudioTrack` for low-latency playback
-  - iOS: Stub for future implementation
+  - iOS: Uses MPV (libmpv) for all audio codecs
 
 See `.claude/settings-screen.md` for complete Settings screen documentation including authentication flows, local player configuration, and state management.
 

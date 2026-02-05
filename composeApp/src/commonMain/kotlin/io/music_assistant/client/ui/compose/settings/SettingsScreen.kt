@@ -145,8 +145,8 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                         // (i.e., user hasn't changed anything)
                         val userChangedConnectionInfo =
                             ipAddress != connInfo.host ||
-                            port != connInfo.port.toString() ||
-                            isTls != connInfo.isTls
+                                    port != connInfo.port.toString() ||
+                                    isTls != connInfo.isTls
 
                         if (!userChangedConnectionInfo) {
                             // User is trying to reconnect to same server - auto-retry
@@ -426,6 +426,7 @@ private fun SendspinSection(
 ) {
     val sendspinEnabled by viewModel.sendspinEnabled.collectAsStateWithLifecycle()
     val sendspinDeviceName by viewModel.sendspinDeviceName.collectAsStateWithLifecycle()
+    val sendspinUseCustomConnection by viewModel.sendspinUseCustomConnection.collectAsStateWithLifecycle()
     val sendspinPort by viewModel.sendspinPort.collectAsStateWithLifecycle()
     val sendspinPath by viewModel.sendspinPath.collectAsStateWithLifecycle()
     val sendspinCodecPreference by viewModel.sendspinCodecPreference.collectAsStateWithLifecycle()
@@ -449,84 +450,6 @@ private fun SendspinSection(
                 disabledTextColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
             )
         )
-
-        val sendspinHost by viewModel.sendspinHost.collectAsStateWithLifecycle()
-        val sendspinUseTls by viewModel.sendspinUseTls.collectAsStateWithLifecycle()
-
-        TextField(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            value = sendspinHost,
-            onValueChange = { viewModel.setSendspinHost(it) },
-            label = { Text("Custom Host (leave empty for default)") },
-            singleLine = true,
-            enabled = !sendspinEnabled,
-            colors = TextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                disabledTextColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-            )
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            TextField(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(bottom = 12.dp),
-                value = sendspinPort.toString(),
-                onValueChange = {
-                    it.toIntOrNull()?.let { port -> viewModel.setSendspinPort(port) }
-                },
-                label = { Text("Port (8927 by default)") },
-                singleLine = true,
-                enabled = !sendspinEnabled,
-                colors = TextFieldDefaults.colors(
-                    focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    disabledTextColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                )
-            )
-
-            TextField(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(bottom = 12.dp),
-                value = sendspinPath,
-                onValueChange = { viewModel.setSendspinPath(it) },
-                label = { Text("Path") },
-                singleLine = true,
-                enabled = !sendspinEnabled,
-                colors = TextFieldDefaults.colors(
-                    focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    disabledTextColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                )
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = sendspinUseTls,
-                onCheckedChange = { viewModel.setSendspinUseTls(it) },
-                enabled = !sendspinEnabled
-            )
-            Text(
-                text = "Use secure connection (WSS/TLS)",
-                color = if (sendspinEnabled)
-                    MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                else
-                    MaterialTheme.colorScheme.onBackground
-            )
-        }
 
         // Codec selection
         Row(
@@ -573,6 +496,108 @@ private fun SendspinSection(
                     ) { viewModel.setSendspinCodecPreference(item) }
                 }
             )
+        }
+
+        // Custom connection toggle
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = sendspinUseCustomConnection,
+                onCheckedChange = { viewModel.setSendspinUseCustomConnection(it) },
+                enabled = !sendspinEnabled
+            )
+            Text(
+                text = "Custom Sendspin connection",
+                color = if (sendspinEnabled)
+                    MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                else
+                    MaterialTheme.colorScheme.onBackground
+            )
+        }
+
+        // Connection fields (only shown when using custom connection)
+        if (sendspinUseCustomConnection) {
+            val sendspinHost by viewModel.sendspinHost.collectAsStateWithLifecycle()
+            val sendspinUseTls by viewModel.sendspinUseTls.collectAsStateWithLifecycle()
+
+            TextField(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                value = sendspinHost,
+                onValueChange = { viewModel.setSendspinHost(it) },
+                label = { Text("Host") },
+                singleLine = true,
+                enabled = !sendspinEnabled,
+                colors = TextFieldDefaults.colors(
+                    focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                    disabledTextColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                )
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                TextField(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(bottom = 12.dp),
+                    value = sendspinPort.toString(),
+                    onValueChange = {
+                        it.toIntOrNull()?.let { port -> viewModel.setSendspinPort(port) }
+                    },
+                    label = { Text("Port (8095 by default)") },
+                    singleLine = true,
+                    enabled = !sendspinEnabled,
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                        disabledTextColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    )
+                )
+
+                TextField(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(bottom = 12.dp),
+                    value = sendspinPath,
+                    onValueChange = { viewModel.setSendspinPath(it) },
+                    label = { Text("Path") },
+                    singleLine = true,
+                    enabled = !sendspinEnabled,
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                        disabledTextColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    )
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = sendspinUseTls,
+                    onCheckedChange = { viewModel.setSendspinUseTls(it) },
+                    enabled = !sendspinEnabled
+                )
+                Text(
+                    text = "Use secure connection (WSS/TLS)",
+                    color = if (sendspinEnabled)
+                        MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                    else
+                        MaterialTheme.colorScheme.onBackground
+                )
+            }
         }
 
         // Toggle button on the bottom

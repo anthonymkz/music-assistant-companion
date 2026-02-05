@@ -545,17 +545,24 @@ class MainDataSource(
             return
         }
 
-        val serverHost = settings.connectionInfo.value?.webUrl?.let { url ->
-            try {
-                Url(url).host
-            } catch (e: Exception) {
-                log.e(e) { "Failed to parse server URL: $url" }
-                null
-            }
+        // Check if user is authorized (required for Sendspin)
+        val authToken = settings.token.value
+        if (authToken == null) {
+            log.w { "No auth token available, cannot initialize Sendspin" }
+            return
         }
 
-        if (serverHost == null) {
-            log.w { "No server host available, cannot initialize Sendspin" }
+        // Get main connection info
+        val mainConnectionInfo = settings.connectionInfo.value
+        if (mainConnectionInfo == null) {
+            log.w { "No main connection info available, cannot initialize Sendspin" }
+            return
+        }
+
+        val serverHost = try {
+            Url(mainConnectionInfo.webUrl).host
+        } catch (e: Exception) {
+            log.e(e) { "Failed to parse server URL: ${mainConnectionInfo.webUrl}" }
             return
         }
 
@@ -587,17 +594,41 @@ class MainDataSource(
         }
 
         // Build Sendspin config
-        val config = SendspinConfig(
-            clientId = settings.sendspinClientId.value,
-            deviceName = settings.sendspinDeviceName.value,
-            enabled = true,
-            bufferCapacityMicros = 500_000, // 500ms
-            codecPreference = settings.sendspinCodecPreference.value,
-            serverHost = settings.sendspinHost.value.takeIf { it.isNotEmpty() } ?: serverHost,
-            serverPort = settings.sendspinPort.value,
-            serverPath = settings.sendspinPath.value,
-            useTls = settings.sendspinUseTls.value
-        )
+        val useCustomConnection = settings.sendspinUseCustomConnection.value
+
+        val config = if (useCustomConnection) {
+            // Custom connection mode: use separate Sendspin settings
+            SendspinConfig(
+                clientId = settings.sendspinClientId.value,
+                deviceName = settings.sendspinDeviceName.value,
+                enabled = true,
+                bufferCapacityMicros = 500_000, // 500ms
+                codecPreference = settings.sendspinCodecPreference.value,
+                serverHost = settings.sendspinHost.value.takeIf { it.isNotEmpty() } ?: serverHost,
+                serverPort = settings.sendspinPort.value,
+                serverPath = settings.sendspinPath.value,
+                useTls = settings.sendspinUseTls.value,
+                useCustomConnection = true,
+                authToken = authToken,
+                mainConnectionPort = mainConnectionInfo.port
+            )
+        } else {
+            // Proxy mode: use main connection settings with /sendspin path
+            SendspinConfig(
+                clientId = settings.sendspinClientId.value,
+                deviceName = settings.sendspinDeviceName.value,
+                enabled = true,
+                bufferCapacityMicros = 500_000, // 500ms
+                codecPreference = settings.sendspinCodecPreference.value,
+                serverHost = serverHost,
+                serverPort = mainConnectionInfo.port,
+                serverPath = "/sendspin",
+                useTls = mainConnectionInfo.isTls,
+                useCustomConnection = false,
+                authToken = authToken,
+                mainConnectionPort = mainConnectionInfo.port
+            )
+        }
 
         log.i { "Initializing Sendspin client: $serverHost:${config.serverPort}" }
 

@@ -25,6 +25,7 @@ sealed class SendspinPlaybackState {
 
 sealed class ProtocolState {
     object Disconnected : ProtocolState()
+    object AwaitingAuth : ProtocolState()
     object AwaitingServerHello : ProtocolState()
     data class Ready(val activeRoles: List<VersionedRole>) : ProtocolState()
     object Streaming : ProtocolState()

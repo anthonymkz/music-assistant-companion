@@ -31,6 +31,13 @@ sealed interface SendspinMessage {
 // MARK: - Client Messages
 
 @Serializable
+data class ClientAuthMessage(
+    override val type: String = "auth",
+    val token: String,
+    @SerialName("client_id") val clientId: String
+) : SendspinMessage
+
+@Serializable
 data class ClientHelloMessage(
     override val type: String = "client/hello",
     val payload: ClientHelloPayload
@@ -91,6 +98,11 @@ data class ArtworkSupport(val dummy: Int = 0) // Empty struct placeholder
 data class VisualizerSupport(val dummy: Int = 0) // Empty struct placeholder
 
 // MARK: - Server Messages
+
+@Serializable
+data class ServerAuthOkMessage(
+    override val type: String = "auth_ok"
+) : SendspinMessage
 
 @Serializable
 data class ServerHelloMessage(

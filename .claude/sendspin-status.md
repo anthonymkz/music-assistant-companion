@@ -7,9 +7,12 @@
 ### ✅ Core Features - WORKING
 
 - **WebSocket Connection** - Connects to Music Assistant server Sendspin endpoint
+- **Proxy Mode** - Uses main connection (port 8095) + path `/sendspin` by default with token authentication
+- **Custom Connection Mode** - Optional separate host/port configuration for standalone servers
 - **Auto-Reconnect** - WebSocketHandler automatically reconnects on network failures (exponential backoff, 10 attempts max)
 - **Network Resilience** - Aggressive keepalive (5s ping, 5s TCP keepalive) for VPN-like stability
-- **Protocol Handshake** - client/hello ↔ server/hello exchange
+- **Token Authentication** - Authenticates with server token before protocol handshake (proxy mode only)
+- **Protocol Handshake** - auth ↔ auth_ok → client/hello ↔ server/hello exchange
 - **Clock Synchronization** - NTP-style sync with monotonic time base & Kalman filter
 - **Adaptive Buffering** - Network-aware dynamic buffer sizing (WebRTC NetEQ-inspired)
 - **Playback Control** - Play, pause, resume, seek, next/previous track
@@ -150,14 +153,20 @@ AudioStreamManager: Playback: 3333 chunks, buffer=4890ms (target=400ms)
 ```
 User Actions → Music Assistant Server
                       ↓
-              Sendspin Protocol
+              Connection Mode Selection
+              • Proxy mode: main port (8095) + /sendspin
+              • Custom mode: separate host/port config
+                      ↓
+              WebSocket Connection
+              • Proxy: auth → auth_ok → client/hello
+              • Direct: client/hello
                       ↓
               SendspinClient
               • Clock Sync (monotonic time)
               • State Reporting (every 2s)
               • Message Handling
                       ↓
-              AdaptiveBufferManager  ← NEW
+              AdaptiveBufferManager
               • Network stats tracking
               • Dynamic threshold calculation
               • RTT/jitter monitoring
@@ -166,33 +175,73 @@ User Actions → Music Assistant Server
               • Binary Parsing
               • Timestamp Buffer
               • Chunk Scheduling (adaptive thresholds)
-              • Opus/PCM Decoding
+              • Opus/FLAC/PCM Decoding
                       ↓
-              MediaPlayerController (Android)
-              • AudioTrack (Raw PCM)
-              • Write buffered chunks
+              MediaPlayerController
+              • Android: AudioTrack (Raw PCM)
+              • iOS: MPV (all codecs via FFmpeg)
                       ↓
               Audio Output
 ```
 
 ---
 
+## Connection Modes
+
+### Proxy Mode (Default)
+**How it works:**
+- Uses main WebSocket connection settings (host, port, TLS)
+- Connects to `/sendspin` path on main server
+- Default port: 8095 (same as main API)
+- Requires authentication before protocol handshake
+
+**Authentication Flow:**
+1. WebSocket connects to `ws(s)://host:8095/sendspin`
+2. Client sends `auth` message: `{ "type": "auth", "token": "<user_token>", "client_id": "<sendspin_id>" }`
+3. Server validates token and responds: `{ "type": "auth_ok" }`
+4. Client proceeds with `client/hello` handshake
+5. Server responds with `server/hello`
+
+**Requirements:**
+- User must be logged in (token available)
+- Only starts after successful main connection authentication
+
+**Benefits:**
+- Single connection configuration
+- Automatic TLS/authentication alignment
+- Simplified user experience
+
+### Custom Connection Mode
+**How it works:**
+- Separate host/port/path/TLS configuration
+- User manually configures Sendspin endpoint
+- Default port: 8927 (standalone Sendspin server)
+- Auto-detects proxy mode if port matches main connection
+
+**Use cases:**
+- Standalone Sendspin server on different host
+- Custom port configurations
+- Direct connection without proxy
+
+**Migration:**
+- Existing users with custom host or port ≠ 8095 → automatically enabled
+- New users → disabled (use proxy mode)
+
+---
+
 ## Known Issues & Bugs
 
 ### High Priority
-1. **No auto-reconnect** - App doesn't reconnect if connection drops
-2. **No volume UI** - Can't control volume from app (receives server commands)
-3. **Error handling incomplete** - Some edge cases not handled gracefully
+1. **No volume UI** - Can't control volume from app (receives server commands)
+2. **Error handling incomplete** - Some edge cases not handled gracefully
 
 ### Medium Priority
-4. **No codec negotiation** - Server chooses codec, client accepts
-5. **Opus header parsing** - Pre-skip samples not handled (may cause click at start)
-6. **No network change handling** - WiFi switch doesn't trigger reconnect
+3. **No codec negotiation** - Server chooses codec, client accepts
+4. **Opus header parsing** - Pre-skip samples not handled (may cause click at start)
 
 ### Low Priority
-7. **No logging controls** - Can't adjust log verbosity at runtime
-8. **No connection retry limits** - Could retry forever
-9. **Thread priority not set** - Playback thread should be high priority
+5. **No logging controls** - Can't adjust log verbosity at runtime
+6. **Thread priority not set** - Playback thread should be high priority
 
 ---
 
@@ -210,15 +259,15 @@ User Actions → Music Assistant Server
 - Opus format (48kHz, stereo, Android)
 - Adaptive buffering (good and degraded network conditions)
 - Long playback sessions (tested with real streams)
+- Network interruption recovery (auto-reconnect with exponential backoff)
 
 ### ⚠️ Partially Tested
-- Network interruption recovery
 - High network latency scenarios
 - Multiple format switches
 - Buffer adaptation edge cases
 
 ### ❌ Not Tested
-- FLAC codec (not implemented on all platforms)
+- FLAC codec (implemented but not extensively tested)
 - Multiple concurrent connections
 - Server restart scenarios
 - Clock drift over extended periods (24+ hours)
@@ -247,27 +296,24 @@ User Actions → Music Assistant Server
 
 ### Immediate
 1. Add volume/mute UI controls
-2. Implement auto-reconnect logic
-3. Add connection retry limits
-4. Improve error messages to user
+2. Improve error messages to user
 
 ### Short Term
-5. Parse Opus codec header (OpusHead) for pre-skip handling
-6. Add buffer health display (debug UI)
-7. Handle network changes gracefully
-8. Add comprehensive error recovery
+3. Parse Opus codec header (OpusHead) for pre-skip handling
+4. Add buffer health display (debug UI)
+5. Add comprehensive error recovery
 
 ### Medium Term
-9. Add codec preference settings
-10. Optimize memory usage
-11. Improve iOS background playback
-12. Enhance iOS volume control integration
+6. Add codec preference settings
+7. Optimize memory usage
+8. Improve iOS background playback
+9. Enhance iOS volume control integration
 
 ### Long Term
-13. Artwork display
-14. Visualizer support
-15. Advanced audio processing features
-16. Multi-room synchronization improvements
+10. Artwork display
+11. Visualizer support
+12. Advanced audio processing features
+13. Multi-room synchronization improvements
 
 ---
 
@@ -313,6 +359,13 @@ User Actions → Music Assistant Server
 ---
 
 ## Critical Implementation Details
+
+### Proxy Authentication (Token-based)
+**CRITICAL:** When using proxy mode (port matches main connection), MUST send `auth` message before `client/hello`.
+- Message format: `{ "type": "auth", "token": "<user_token>", "client_id": "<sendspin_id>" }`
+- Wait for `auth_ok` response before proceeding
+- Server timeout: 10 seconds
+- Only required when `serverPort == mainConnectionPort`
 
 ### Time Base (Monotonic Time)
 **CRITICAL:** Must use `System.nanoTime()` throughout, NOT `System.currentTimeMillis()`.
@@ -376,6 +429,17 @@ User Actions → Music Assistant Server
 ---
 
 ## Changelog
+
+### 2026-02-05 - Proxy Mode & Authentication
+- ✅ **Proxy mode** - Default connection via main server (port 8095) + `/sendspin` path
+- ✅ **Token authentication** - Authenticate before protocol handshake in proxy mode
+- ✅ **Custom connection mode** - Optional separate host/port configuration
+- ✅ **Auto-detection** - Proxy mode detected when port matches main connection
+- ✅ **Migration support** - Existing users with custom configs automatically use custom mode
+- ✅ **Protocol states** - Added `ProtocolState.AwaitingAuth` for auth flow
+- 📊 **Default port** - Changed from 8927 to 8095 for new installs
+- 📊 **UI improvements** - "Custom Sendspin Connection" toggle in settings
+- 📊 Status: Simplified configuration for new users while preserving advanced options
 
 ### 2026-01-16 - iOS Support & Network Resilience
 - ✅ **iOS full implementation** - MPV-based pipeline with FLAC/Opus/PCM
