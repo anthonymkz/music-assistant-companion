@@ -9,7 +9,7 @@
 ## Networking
 - **Ktor** - HTTP client + WebSocket (CIO/Darwin/Java engines)
 - **WebSocket** - Real-time server connection
-- **WebRTC** - Remote access tunneling
+- **WebRTC KMP** (v0.125.11) - Remote access tunneling (implementation in progress)
 
 ## Data
 - **kotlinx.serialization** - JSON serialization

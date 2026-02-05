@@ -81,6 +81,9 @@ kotlin {
 
             implementation(libs.kermit)
 
+            // WebRTC for remote access
+            implementation(libs.webrtc.kmp)
+
         }
 
         commonTest.dependencies {

@@ -22,7 +22,7 @@ open iosApp/iosApp.xcodeproj
 - Queue management and playback control for Music Assistant players
 - Library browsing (Artists, Albums, Tracks, Playlists)
 - Authentication: login/pass, OAuth, long-lived access token
-- Remote access via WebRTC
+- Remote access via WebRTC (planned - see `.claude/webrtc-implementation-plan.md`)
 - Built-in player with Sendspin protocol support
 - Local music playback (platform-specific)
 - Android Auto / CarPlay support
@@ -37,3 +37,7 @@ open iosApp/iosApp.xcodeproj
 ## UI Documentation
 
 - **Settings Screen**: See `.claude/settings-screen.md` for complete documentation on server connection, authentication flows, and local player configuration
+
+## Planned Features
+
+- **WebRTC Remote Access**: See `.claude/webrtc-implementation-plan.md` for comprehensive implementation plan, protocol details, and architecture design

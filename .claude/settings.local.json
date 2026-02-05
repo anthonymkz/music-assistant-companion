@@ -17,7 +17,8 @@
       "Bash(find:*)",
       "Bash(gh pr view:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebFetch(domain:www.music-assistant.io)"
     ]
   }
 }
