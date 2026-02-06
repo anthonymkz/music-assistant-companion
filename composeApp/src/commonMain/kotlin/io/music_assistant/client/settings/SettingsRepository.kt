@@ -179,16 +179,6 @@ class SettingsRepository(
     }
 
     // WebRTC Remote Access settings
-    private val _webrtcEnabled = MutableStateFlow(
-        settings.getBoolean("webrtc_enabled", false)
-    )
-    val webrtcEnabled = _webrtcEnabled.asStateFlow()
-
-    fun setWebrtcEnabled(enabled: Boolean) {
-        settings.putBoolean("webrtc_enabled", enabled)
-        _webrtcEnabled.update { enabled }
-    }
-
     private val _webrtcRemoteId = MutableStateFlow(
         settings.getString("webrtc_remote_id", "")
     )

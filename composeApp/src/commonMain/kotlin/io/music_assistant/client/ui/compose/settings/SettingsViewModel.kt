@@ -52,9 +52,7 @@ class SettingsViewModel(
     fun setSendspinUseTls(enabled: Boolean) = settings.setSendspinUseTls(enabled)
 
     // WebRTC settings
-    val webrtcEnabled = settings.webrtcEnabled
     val webrtcRemoteId = settings.webrtcRemoteId
 
-    fun setWebrtcEnabled(enabled: Boolean) = settings.setWebrtcEnabled(enabled)
     fun setWebrtcRemoteId(remoteId: String) = settings.setWebrtcRemoteId(remoteId)
 }

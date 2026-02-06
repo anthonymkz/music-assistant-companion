@@ -27,6 +27,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -178,7 +180,9 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                 when (sessionState) {
                     is SessionState.Disconnected -> {
                         // State 1 & 2: Disconnected (with or without token)
-                        ServerConnectionSection(
+                        // Show connection method tabs
+                        ConnectionMethodTabs(
+                            viewModel = viewModel,
                             ipAddress = ipAddress,
                             port = port,
                             isTls = isTls,
@@ -186,8 +190,8 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                             onIpAddressChange = { ipAddress = it },
                             onPortChange = { port = it },
                             onTlsChange = { isTls = it },
-                            onConnect = { viewModel.attemptConnection(ipAddress, port, isTls) },
-                            enabled = ipAddress.isValidHost() && port.isIpPort()
+                            onDirectConnect = { viewModel.attemptConnection(ipAddress, port, isTls) },
+                            directConnectEnabled = ipAddress.isValidHost() && port.isIpPort()
                         )
                     }
 
@@ -215,11 +219,6 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                         when (dataConnection) {
                             DataConnectionState.Authenticated -> {
                                 // State 4: Connected and authenticated
-
-                                // WebRTC Remote Access Section
-                                WebRTCSection(
-                                    viewModel = viewModel,
-                                )
 
                                 // Local Player Section
                                 SendspinSection(
@@ -268,6 +267,217 @@ private fun SectionTitle(text: String) {
         color = MaterialTheme.colorScheme.onBackground,
         modifier = Modifier.padding(bottom = 12.dp)
     )
+}
+
+@Composable
+private fun ConnectionMethodTabs(
+    viewModel: SettingsViewModel,
+    ipAddress: String,
+    port: String,
+    isTls: Boolean,
+    hasToken: Boolean,
+    onIpAddressChange: (String) -> Unit,
+    onPortChange: (String) -> Unit,
+    onTlsChange: (Boolean) -> Unit,
+    onDirectConnect: () -> Unit,
+    directConnectEnabled: Boolean
+) {
+    var selectedTab by remember { mutableStateOf(0) }
+    val webrtcRemoteId by viewModel.webrtcRemoteId.collectAsStateWithLifecycle()
+
+    SectionCard {
+        SectionTitle("Connection Method")
+
+        // Tabs
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
+            Tab(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                text = { Text("Direct") }
+            )
+            Tab(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                text = { Text("WebRTC") }
+            )
+        }
+
+        Spacer(modifier = Modifier.size(16.dp))
+
+        // Tab content
+        when (selectedTab) {
+            0 -> {
+                // Direct connection tab
+                DirectConnectionContent(
+                    ipAddress = ipAddress,
+                    port = port,
+                    isTls = isTls,
+                    hasToken = hasToken,
+                    onIpAddressChange = onIpAddressChange,
+                    onPortChange = onPortChange,
+                    onTlsChange = onTlsChange,
+                    onConnect = onDirectConnect,
+                    enabled = directConnectEnabled
+                )
+            }
+            1 -> {
+                // WebRTC connection tab
+                WebRTCConnectionContent(
+                    remoteId = webrtcRemoteId,
+                    onRemoteIdChange = { viewModel.setWebrtcRemoteId(it.uppercase()) },
+                    onConnect = { /* TODO: Implement WebRTC connection */ }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectConnectionContent(
+    ipAddress: String,
+    port: String,
+    isTls: Boolean,
+    hasToken: Boolean,
+    onIpAddressChange: (String) -> Unit,
+    onPortChange: (String) -> Unit,
+    onTlsChange: (Boolean) -> Unit,
+    onConnect: () -> Unit,
+    enabled: Boolean
+) {
+    // Host input
+    TextField(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        value = ipAddress,
+        onValueChange = onIpAddressChange,
+        label = { Text("Server host") },
+        placeholder = { Text("homeassistant.local") },
+        singleLine = true,
+        colors = TextFieldDefaults.colors(
+            focusedTextColor = MaterialTheme.colorScheme.onBackground,
+            unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+        )
+    )
+
+    // Port input
+    TextField(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        value = port,
+        onValueChange = onPortChange,
+        label = { Text("Port") },
+        placeholder = { Text("8095") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        colors = TextFieldDefaults.colors(
+            focusedTextColor = MaterialTheme.colorScheme.onBackground,
+            unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+        )
+    )
+
+    // TLS toggle
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = isTls,
+            onCheckedChange = onTlsChange
+        )
+        Text("Use TLS (wss://)")
+    }
+
+    // Token indicator
+    if (hasToken) {
+        Text(
+            text = "Credentials present",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+    }
+
+    // Connect button
+    Button(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onConnect,
+        enabled = enabled
+    ) {
+        Text("Connect")
+    }
+}
+
+@Composable
+private fun WebRTCConnectionContent(
+    remoteId: String,
+    onRemoteIdChange: (String) -> Unit,
+    onConnect: () -> Unit
+) {
+    Text(
+        text = "Connect from anywhere without port forwarding",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 12.dp)
+    )
+
+    // Remote ID input field
+    TextField(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        value = remoteId,
+        onValueChange = onRemoteIdChange,
+        label = { Text("Remote ID") },
+        placeholder = { Text("MA-XXXX-XXXX") },
+        singleLine = true,
+        colors = TextFieldDefaults.colors(
+            focusedTextColor = MaterialTheme.colorScheme.onBackground,
+            unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+        ),
+        supportingText = {
+            Text(
+                text = "Enter the Remote ID from your Music Assistant server settings",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        isError = remoteId.isNotBlank() && !io.music_assistant.client.webrtc.model.RemoteId.isValid(remoteId)
+    )
+
+    // Validation message
+    if (remoteId.isNotBlank() && !io.music_assistant.client.webrtc.model.RemoteId.isValid(remoteId)) {
+        Text(
+            text = "Invalid Remote ID format",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+    }
+
+    // Info text about WebRTC
+    Text(
+        text = "WebRTC uses cloud signaling with end-to-end encryption. Works through most firewalls and NATs.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        modifier = Modifier.padding(bottom = 12.dp)
+    )
+
+    // Connect button (disabled for now until implementation is complete)
+    Button(
+        onClick = onConnect,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = false // TODO: Enable when WebRTC connection is implemented
+    ) {
+        Text("Connect via WebRTC (Coming Soon)")
+    }
 }
 
 @Composable
@@ -622,99 +832,6 @@ private fun SendspinSection(
             ) {
                 Text("Enable local player")
             }
-        }
-    }
-}
-
-@Composable
-private fun WebRTCSection(
-    modifier: Modifier = Modifier,
-    viewModel: SettingsViewModel,
-) {
-    val webrtcEnabled by viewModel.webrtcEnabled.collectAsStateWithLifecycle()
-    val webrtcRemoteId by viewModel.webrtcRemoteId.collectAsStateWithLifecycle()
-
-    SectionCard(modifier = modifier) {
-        SectionTitle("WebRTC Remote Access")
-
-        Text(
-            text = "Connect from anywhere without port forwarding",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        // Enable toggle
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Enable WebRTC",
-                style = MaterialTheme.typography.bodyLarge
-            )
-            androidx.compose.material3.Switch(
-                checked = webrtcEnabled,
-                onCheckedChange = { viewModel.setWebrtcEnabled(it) }
-            )
-        }
-
-        if (webrtcEnabled) {
-            // Remote ID input field
-            TextField(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                value = webrtcRemoteId,
-                onValueChange = { viewModel.setWebrtcRemoteId(it.uppercase()) },
-                label = { Text("Remote ID") },
-                placeholder = { Text("MA-XXXX-XXXX") },
-                singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                ),
-                supportingText = {
-                    Text(
-                        text = "Enter the Remote ID from your Music Assistant server settings",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                isError = webrtcRemoteId.isNotBlank() && !io.music_assistant.client.webrtc.model.RemoteId.isValid(webrtcRemoteId)
-            )
-
-            // Validation message
-            if (webrtcRemoteId.isNotBlank() && !io.music_assistant.client.webrtc.model.RemoteId.isValid(webrtcRemoteId)) {
-                Text(
-                    text = "Invalid Remote ID format",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-
-            // Info text about WebRTC
-            Text(
-                text = "Note: WebRTC uses cloud signaling (wss://signaling.music-assistant.io) with end-to-end encryption. Works through most firewalls and NATs.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
-            // TODO: Add connection button and status when WebRTC client is implemented
-            /*
-            Button(
-                onClick = { viewModel.connectViaWebRTC() },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = io.music_assistant.client.webrtc.model.RemoteId.isValid(webrtcRemoteId)
-            ) {
-                Text("Connect via WebRTC")
-            }
-            */
         }
     }
 }
