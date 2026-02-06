@@ -2,9 +2,7 @@ package io.music_assistant.client.webrtc
 
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
-import io.ktor.serialization.kotlinx.KotlinxWebsocketSerializationConverter
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
@@ -12,10 +10,8 @@ import io.ktor.websocket.readText
 import io.music_assistant.client.utils.myJson
 import io.music_assistant.client.webrtc.model.SignalingMessage
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -24,8 +20,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
-import kotlin.coroutines.CoroutineContext
 
 /**
  * WebSocket state for signaling server connection.
@@ -57,21 +54,18 @@ sealed class SignalingState {
  * 4. Client and gateway exchange SDP offers/answers and ICE candidates via server
  * 5. WebRTC peer connection established directly between client and gateway
  *
+ * @param client HttpClient configured with WebSockets (should be shared/injected)
+ * @param scope CoroutineScope for managing connection lifecycle
  * @param signalingUrl WebSocket URL of signaling server (default: production server)
  */
 class SignalingClient(
+    private val client: HttpClient,
+    private val scope: CoroutineScope,
     private val signalingUrl: String = DEFAULT_SIGNALING_URL
-) : CoroutineScope {
+) {
 
     private val logger = Logger.withTag("SignalingClient")
-    private val supervisorJob = SupervisorJob()
-    override val coroutineContext: CoroutineContext = Dispatchers.Default + supervisorJob
-
-    private val client = HttpClient {
-        install(WebSockets) {
-            contentConverter = KotlinxWebsocketSerializationConverter(myJson)
-        }
-    }
+    private val mutex = Mutex()
 
     private var session: io.ktor.client.plugins.websocket.DefaultClientWebSocketSession? = null
     private var receiveJob: Job? = null
@@ -85,13 +79,14 @@ class SignalingClient(
     /**
      * Connect to the signaling server.
      * Opens WebSocket connection and starts listening for messages.
+     * Thread-safe: protected by mutex to prevent concurrent connection attempts.
      */
-    suspend fun connect() {
+    suspend fun connect() = mutex.withLock {
         if (_connectionState.value is SignalingState.Connected ||
             _connectionState.value is SignalingState.Connecting
         ) {
             logger.w { "Already connected or connecting to signaling server" }
-            return
+            return@withLock
         }
 
         logger.i { "Connecting to signaling server: $signalingUrl" }
@@ -137,12 +132,13 @@ class SignalingClient(
 
     /**
      * Disconnect from the signaling server.
+     * Thread-safe: protected by mutex.
      */
-    suspend fun disconnect() {
+    suspend fun disconnect() = mutex.withLock {
         logger.i { "Disconnecting from signaling server" }
 
         try {
-            receiveJob?.cancel()
+            receiveJob?.cancelAndJoin()
             receiveJob = null
 
             session?.close(CloseReason(CloseReason.Codes.NORMAL, "Client disconnect"))
@@ -157,19 +153,19 @@ class SignalingClient(
 
     /**
      * Close the signaling client and cleanup resources.
+     * Should be called when the client is no longer needed.
+     * Note: Does not close the HttpClient as it's injected and may be shared.
      */
-    fun close() {
+    suspend fun close() {
         logger.i { "Closing signaling client" }
-        receiveJob?.cancel()
-        supervisorJob.cancel()
-        client.close()
+        disconnect()
     }
 
     /**
      * Start listening for incoming messages from the signaling server.
      */
     private fun startReceiving() {
-        receiveJob = launch {
+        receiveJob = scope.launch {
             val currentSession = session ?: return@launch
 
             try {

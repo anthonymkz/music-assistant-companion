@@ -59,6 +59,7 @@ import io.music_assistant.client.utils.DataConnectionState
 import io.music_assistant.client.utils.SessionState
 import io.music_assistant.client.utils.isIpPort
 import io.music_assistant.client.utils.isValidHost
+import io.music_assistant.client.webrtc.model.RemoteId
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -282,7 +283,8 @@ private fun ConnectionMethodTabs(
     onDirectConnect: () -> Unit,
     directConnectEnabled: Boolean
 ) {
-    var selectedTab by remember { mutableStateOf(0) }
+    val preferredMethod by viewModel.preferredConnectionMethod.collectAsStateWithLifecycle()
+    val selectedTab = if (preferredMethod == "webrtc") 1 else 0
     val webrtcRemoteId by viewModel.webrtcRemoteId.collectAsStateWithLifecycle()
 
     SectionCard {
@@ -296,12 +298,12 @@ private fun ConnectionMethodTabs(
         ) {
             Tab(
                 selected = selectedTab == 0,
-                onClick = { selectedTab = 0 },
+                onClick = { viewModel.setPreferredConnectionMethod("direct") },
                 text = { Text("Direct") }
             )
             Tab(
                 selected = selectedTab == 1,
-                onClick = { selectedTab = 1 },
+                onClick = { viewModel.setPreferredConnectionMethod("webrtc") },
                 text = { Text("WebRTC") }
             )
         }
@@ -421,6 +423,8 @@ private fun WebRTCConnectionContent(
     onRemoteIdChange: (String) -> Unit,
     onConnect: () -> Unit
 ) {
+    val isInvalidRemoteId = remoteId.isNotBlank() && !RemoteId.isValid(remoteId)
+
     Text(
         text = "Connect from anywhere without port forwarding",
         style = MaterialTheme.typography.bodySmall,
@@ -449,11 +453,11 @@ private fun WebRTCConnectionContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         },
-        isError = remoteId.isNotBlank() && !io.music_assistant.client.webrtc.model.RemoteId.isValid(remoteId)
+        isError = isInvalidRemoteId
     )
 
     // Validation message
-    if (remoteId.isNotBlank() && !io.music_assistant.client.webrtc.model.RemoteId.isValid(remoteId)) {
+    if (isInvalidRemoteId) {
         Text(
             text = "Invalid Remote ID format",
             style = MaterialTheme.typography.bodySmall,
@@ -477,101 +481,6 @@ private fun WebRTCConnectionContent(
         enabled = false // TODO: Enable when WebRTC connection is implemented
     ) {
         Text("Connect via WebRTC (Coming Soon)")
-    }
-}
-
-@Composable
-private fun ServerConnectionSection(
-    ipAddress: String,
-    port: String,
-    isTls: Boolean,
-    hasToken: Boolean,
-    onIpAddressChange: (String) -> Unit,
-    onPortChange: (String) -> Unit,
-    onTlsChange: (Boolean) -> Unit,
-    onConnect: () -> Unit,
-    enabled: Boolean
-) {
-    SectionCard {
-        SectionTitle("Server Connection")
-
-        TextField(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            value = ipAddress,
-            onValueChange = onIpAddressChange,
-            label = { Text("Host") },
-            singleLine = true,
-            colors = TextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-            ),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Uri,
-                autoCorrectEnabled = false
-            ),
-        )
-
-        TextField(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            value = port,
-            onValueChange = onPortChange,
-            label = { Text("Port (8095 by default)") },
-            singleLine = true,
-            colors = TextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-            )
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = isTls,
-                onCheckedChange = onTlsChange
-            )
-            Text(
-                text = "Use TLS",
-                color = MaterialTheme.colorScheme.onBackground
-            )
-        }
-
-        if (hasToken) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Credentials present",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-        }
-
-        Button(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onConnect,
-            enabled = enabled
-        ) {
-            Text("Connect")
-        }
     }
 }
 

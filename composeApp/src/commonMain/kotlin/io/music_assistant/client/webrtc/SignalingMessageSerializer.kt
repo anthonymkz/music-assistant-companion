@@ -1,5 +1,6 @@
 package io.music_assistant.client.webrtc
 
+import co.touchlab.kermit.Logger
 import io.music_assistant.client.webrtc.model.SignalingMessage
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.JsonContentPolymorphicSerializer
@@ -13,8 +14,12 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * This is required because the signaling protocol uses a "type" discriminator field
  * rather than kotlinx.serialization's default class discriminator.
+ *
+ * Forward compatible: Unknown message types are deserialized as Unknown instead of crashing.
  */
 object SignalingMessageSerializer : JsonContentPolymorphicSerializer<SignalingMessage>(SignalingMessage::class) {
+    private val logger = Logger.withTag("SignalingMessageSerializer")
+
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<SignalingMessage> {
         val type = element.jsonObject["type"]?.jsonPrimitive?.content
             ?: throw IllegalArgumentException("Missing 'type' field in signaling message")
@@ -28,7 +33,10 @@ object SignalingMessageSerializer : JsonContentPolymorphicSerializer<SignalingMe
             "error" -> SignalingMessage.Error.serializer()
             "client-disconnected" -> SignalingMessage.ClientDisconnected.serializer()
             "registered" -> SignalingMessage.Registered.serializer()
-            else -> throw IllegalArgumentException("Unknown signaling message type: $type")
+            else -> {
+                logger.w { "Received unknown signaling message type: $type (forward compatibility fallback)" }
+                SignalingMessage.Unknown.serializer()
+            }
         }
     }
 }

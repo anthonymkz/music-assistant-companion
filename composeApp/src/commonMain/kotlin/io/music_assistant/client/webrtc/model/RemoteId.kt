@@ -12,6 +12,11 @@ package io.music_assistant.client.webrtc.model
  *          "MA-VVPN-3TLP" (formatted for display)
  */
 data class RemoteId(val rawId: String) {
+    init {
+        require(rawId.matches(Regex("[A-Z0-9]{8,26}"))) {
+            "Invalid Remote ID: must be 8-26 uppercase alphanumeric characters, got: $rawId"
+        }
+    }
     /**
      * User-facing formatted Remote ID with "MA-" prefix and hyphens.
      * Format: MA-XXXX-XXXX (first 8 characters for display)

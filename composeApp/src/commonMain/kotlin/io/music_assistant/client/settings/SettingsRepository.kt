@@ -178,6 +178,17 @@ class SettingsRepository(
         _sendspinUseCustomConnection.update { enabled }
     }
 
+    // Connection method preference
+    private val _preferredConnectionMethod = MutableStateFlow(
+        settings.getString("preferred_connection_method", "direct")
+    )
+    val preferredConnectionMethod = _preferredConnectionMethod.asStateFlow()
+
+    fun setPreferredConnectionMethod(method: String) {
+        settings.putString("preferred_connection_method", method)
+        _preferredConnectionMethod.update { method }
+    }
+
     // WebRTC Remote Access settings
     private val _webrtcRemoteId = MutableStateFlow(
         settings.getString("webrtc_remote_id", "")

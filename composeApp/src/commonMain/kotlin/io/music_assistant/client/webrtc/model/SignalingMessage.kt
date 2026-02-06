@@ -21,9 +21,11 @@ sealed interface SignalingMessage {
     @Serializable
     @SerialName("connect")
     data class Connect(
-        @SerialName("remoteId") val remoteId: String,
+        @SerialName("remoteId") val remoteId: String
+    ) : SignalingMessage {
+        @SerialName("type")
         override val type: String = "connect"
-    ) : SignalingMessage
+    }
 
     /**
      * Signaling Server → Client
@@ -33,9 +35,11 @@ sealed interface SignalingMessage {
     @SerialName("session-ready")
     data class SessionReady(
         @SerialName("sessionId") val sessionId: String,
-        @SerialName("iceServers") val iceServers: List<IceServer>,
+        @SerialName("iceServers") val iceServers: List<IceServer>
+    ) : SignalingMessage {
+        @SerialName("type")
         override val type: String = "session-ready"
-    ) : SignalingMessage
+    }
 
     /**
      * Client → Signaling Server
@@ -45,9 +49,11 @@ sealed interface SignalingMessage {
     @SerialName("offer")
     data class Offer(
         @SerialName("sessionId") val sessionId: String,
-        @SerialName("data") val data: SessionDescription,
+        @SerialName("data") val data: SessionDescription
+    ) : SignalingMessage {
+        @SerialName("type")
         override val type: String = "offer"
-    ) : SignalingMessage
+    }
 
     /**
      * Signaling Server → Client
@@ -57,9 +63,11 @@ sealed interface SignalingMessage {
     @SerialName("answer")
     data class Answer(
         @SerialName("sessionId") val sessionId: String,
-        @SerialName("data") val data: SessionDescription,
+        @SerialName("data") val data: SessionDescription
+    ) : SignalingMessage {
+        @SerialName("type")
         override val type: String = "answer"
-    ) : SignalingMessage
+    }
 
     /**
      * Bidirectional: Client ↔ Signaling Server ↔ Gateway
@@ -69,9 +77,11 @@ sealed interface SignalingMessage {
     @SerialName("ice-candidate")
     data class IceCandidate(
         @SerialName("sessionId") val sessionId: String,
-        @SerialName("data") val data: IceCandidateData,
+        @SerialName("data") val data: IceCandidateData
+    ) : SignalingMessage {
+        @SerialName("type")
         override val type: String = "ice-candidate"
-    ) : SignalingMessage
+    }
 
     /**
      * Signaling Server → Client
@@ -81,9 +91,11 @@ sealed interface SignalingMessage {
     @SerialName("error")
     data class Error(
         @SerialName("error") val error: String,
-        @SerialName("sessionId") val sessionId: String? = null,
+        @SerialName("sessionId") val sessionId: String? = null
+    ) : SignalingMessage {
+        @SerialName("type")
         override val type: String = "error"
-    ) : SignalingMessage
+    }
 
     /**
      * Signaling Server → Client
@@ -92,9 +104,11 @@ sealed interface SignalingMessage {
     @Serializable
     @SerialName("client-disconnected")
     data class ClientDisconnected(
-        @SerialName("sessionId") val sessionId: String,
+        @SerialName("sessionId") val sessionId: String
+    ) : SignalingMessage {
+        @SerialName("type")
         override val type: String = "client-disconnected"
-    ) : SignalingMessage
+    }
 
     /**
      * Signaling Server → Client
@@ -103,8 +117,20 @@ sealed interface SignalingMessage {
     @Serializable
     @SerialName("registered")
     data class Registered(
-        @SerialName("remoteId") val remoteId: String,
+        @SerialName("remoteId") val remoteId: String
+    ) : SignalingMessage {
+        @SerialName("type")
         override val type: String = "registered"
+    }
+
+    /**
+     * Unknown message type (forward compatibility).
+     * Received when server sends a message type we don't recognize.
+     * Allows client to continue operating when server protocol is extended.
+     */
+    @Serializable
+    data class Unknown(
+        override val type: String
     ) : SignalingMessage
 }
 

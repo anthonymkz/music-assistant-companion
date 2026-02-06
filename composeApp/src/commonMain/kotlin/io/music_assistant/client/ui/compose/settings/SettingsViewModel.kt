@@ -51,6 +51,11 @@ class SettingsViewModel(
     fun setSendspinHost(host: String) = settings.setSendspinHost(host)
     fun setSendspinUseTls(enabled: Boolean) = settings.setSendspinUseTls(enabled)
 
+    // Connection method preference
+    val preferredConnectionMethod = settings.preferredConnectionMethod
+
+    fun setPreferredConnectionMethod(method: String) = settings.setPreferredConnectionMethod(method)
+
     // WebRTC settings
     val webrtcRemoteId = settings.webrtcRemoteId
 
