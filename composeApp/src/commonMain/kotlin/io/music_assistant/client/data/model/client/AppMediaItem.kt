@@ -31,6 +31,7 @@ interface PlayableItem {
     val isInLibrary: Boolean
     val favorite: Boolean?
     val longId: Long
+    val canStartRadio: Boolean
 }
 
 abstract class AppMediaItem(
@@ -47,6 +48,7 @@ abstract class AppMediaItem(
     //val isPlayable: Boolean?,
     //val timestampAdded: Long?,
     //val timestampModified: Long?,
+    val canStartRadio: Boolean = false
 ) {
 
     open val subtitle: String? = null
@@ -189,6 +191,7 @@ abstract class AppMediaItem(
         //isPlayable,
         //timestampAdded,
         //timestampModified,
+        canStartRadio = true,
     )
 
     class Album(
@@ -224,6 +227,7 @@ abstract class AppMediaItem(
         //isPlayable,
         //timestampAdded,
         //timestampModified,
+        canStartRadio = true,
     ) {
         override val subtitle = artists?.joinToString(separator = ", ") { it.name }
     }
@@ -267,6 +271,7 @@ abstract class AppMediaItem(
         //isPlayable,
         //timestampAdded,
         //timestampModified,
+        canStartRadio = true,
     ), PlayableItem {
         override val subtitle = artists?.joinToString(separator = ", ") { it.name }
         override val parentName: String? = album?.name
@@ -303,6 +308,7 @@ abstract class AppMediaItem(
         //isPlayable,
         //timestampAdded,
         //timestampModified,
+        canStartRadio = true,
     ) {
         override val subtitle = "Playlist"
     }

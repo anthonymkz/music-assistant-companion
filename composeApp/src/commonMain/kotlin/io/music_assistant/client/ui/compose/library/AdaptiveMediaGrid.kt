@@ -40,7 +40,7 @@ fun AdaptiveMediaGrid(
     isLoadingMore: Boolean = false,
     hasMore: Boolean = true,
     onItemClick: (AppMediaItem) -> Unit,
-    onTrackClick: ((PlayableItem, QueueOption) -> Unit),
+    onTrackClick: ((PlayableItem, QueueOption, Boolean) -> Unit),
     onLoadMore: () -> Unit = {},
     gridState: LazyGridState = rememberLazyGridState(),
     playlistActions: ActionsViewModel.PlaylistActions,

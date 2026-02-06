@@ -191,31 +191,293 @@ Music Assistant Gateway
 
 ---
 
+#### Phase 2.5: Architecture Audit & Fixes (COMPLETED 2026-02-05)
+**Status**: ✅ Done
+
+After completing Phase 2, a comprehensive architectural audit identified and fixed critical issues before proceeding to Phase 3. All fixes maintain minimal code changes while ensuring production-quality architecture.
+
+**Issues Fixed:**
+
+1. **SignalingClient Lifecycle (CRITICAL)**
+   - **Problem**: Implemented `CoroutineScope` with self-owned `SupervisorJob` → memory leak risk
+   - **Fix**: Now accepts external `scope: CoroutineScope` via constructor
+   - **Impact**: Proper lifecycle management, no resource leaks
+
+2. **Thread Safety (CRITICAL)**
+   - **Problem**: Mutable `session` and `receiveJob` vars without synchronization → race conditions
+   - **Fix**: Added `Mutex` to protect `connect()` and `disconnect()` operations
+   - **Impact**: Thread-safe concurrent access
+
+3. **Resource Management**
+   - **Problem**: Created new `HttpClient` per instance → resource waste (Ktor best practice: reuse)
+   - **Fix**: Accept `HttpClient` via constructor, created `webrtcModule` DI configuration
+   - **Impact**: Shared HttpClient, proper resource management
+
+4. **Cleanup Operations**
+   - **Problem**: `close()` was non-suspending, `disconnect()` used `cancel()` without waiting
+   - **Fix**: Made `close()` suspend, use `cancelAndJoin()` for proper cleanup
+   - **Impact**: Graceful shutdown, no dangling coroutines
+
+5. **Forward Compatibility (CRITICAL)**
+   - **Problem**: Unknown signaling message types → `IllegalArgumentException` → client crash
+   - **Fix**: Added `SignalingMessage.Unknown` type, log warning instead of crash
+   - **Impact**: Client survives server protocol extensions
+
+6. **RemoteId Validation**
+   - **Problem**: No constructor validation → potential `IndexOutOfBoundsException` in `formatted` property
+   - **Fix**: Added `init` block requiring 8-26 alphanumeric chars
+   - **Impact**: Fail-fast validation, no runtime crashes
+
+7. **SignalingMessage Type Field**
+   - **Problem**: `type` was constructor parameter → allowed inconsistent instances
+   - **Fix**: Made `type` an immutable property, not a constructor parameter
+   - **Impact**: Type safety, no invalid messages
+
+8. **Code Cleanup (YAGNI)**
+   - **Problem**: ~180 lines of unused enums and dead code (premature optimization)
+   - **Fix**: Deleted unused `RTCPeerConnectionState`, `RTCIceConnectionState`, `RTCDataChannelState`, `IceCandidateType` enums and `ServerConnectionSection` composable
+   - **Impact**: Reduced codebase size, improved maintainability
+
+9. **Settings Screen UX**
+   - **Problem**: Tab selection lost on recomposition
+   - **Fix**: Added `preferredConnectionMethod` to `SettingsRepository` for persistence
+   - **Impact**: Better UX, remembers user preference
+
+**Files Modified:**
+- `SignalingClient.kt` - Lifecycle, thread safety, resource management
+- `SignalingMessageSerializer.kt` - Forward compatibility
+- `SignalingMessage.kt` - Type immutability, Unknown message type
+- `RemoteId.kt` - Constructor validation
+- `WebRTCState.kt` - Removed unused enums (-90 lines)
+- `SettingsRepository.kt` - Connection method persistence
+- `SettingsViewModel.kt` - Exposed preferences
+- `SettingsScreen.kt` - Persistent tabs, removed dead code (-90 lines)
+
+**Files Created:**
+- `WebRTCModule.kt` - Koin DI module for WebRTC components
+
+**Build Status**: ✅ All changes compile successfully
+
+**Code Quality**: Production-ready architecture with proper lifecycle management, thread safety, and forward compatibility.
+
+---
+
 ### 🔄 Next Phases (Not Started)
 
-#### Phase 3: WebRTC Peer Connection (IN PROGRESS - Next)
-**Status**: ⏳ Pending
+#### Phase 3: WebRTC Peer Connection & Connection Manager (IN PROGRESS)
+**Status**: 🔄 Planning Complete - Ready for Implementation
+
+**Architecture Decisions:**
+
+1. **Connection Mode Exclusivity**
+   - WebRTC and Direct connection are **mutually exclusive** (either/or, never both)
+   - When WebRTC is connected, Direct connection is unavailable and vice-versa
+   - User selects connection method via tabs in Settings screen (already implemented)
+   - Settings track `preferredConnectionMethod: "direct" | "webrtc"`
+
+2. **ServiceClient Code Reuse Strategy**
+   - WebRTC data channel proxies WebSocket connection (same protocol)
+   - **Everything above authentication layer is identical**: message handling, event dispatching, state management
+   - **Connection establishment differs**: WebRTC uses peer connection + data channel instead of raw WebSocket
+   - **Implementation approach**:
+     - Phase 3: Create separate WebRTC implementation (don't touch ServiceClient yet)
+     - Phase 4: Identify common code and extract shared logic
+     - Phase 5: Refactor ServiceClient to support both modes via abstraction
+
+3. **Library Choice: webrtc-kmp**
+   - Using `com.shepeliev:webrtc-kmp:0.125.11` (already added in Phase 1.1)
+   - Wraps native WebRTC for Android and iOS
+   - Reduces platform-specific code significantly
+   - Provides KMP-friendly API with coroutines support
+
+4. **Platform Strategy**
+   - **Android**: Full implementation using webrtc-kmp
+   - **iOS**: expect/actual stubs with detailed comments for future implementation
+   - Don't touch iOS code yet - leave well-documented TODOs
 
 **What needs to be implemented:**
-1. **WebRTC Abstraction Interface** (`webrtc/WebRTCPeerConnection.kt`)
-   - Common interface for peer connections across platforms
-   - Methods: `initialize()`, `createOffer()`, `setRemoteDescription()`, `addIceCandidate()`
-   - Data channel creation and management
-   - ICE candidate callbacks
 
-2. **Platform-specific implementations** (expect/actual pattern)
-   - `WebRTCPeerConnection.android.kt` - Using `org.webrtc:google-webrtc`
-   - `WebRTCPeerConnection.ios.kt` - Using native WebRTC framework
-   - iOS: Requires WebRTC SDK pod/SPM setup in Xcode
+### 3.1: WebRTC Connection Manager (Core Orchestration)
 
-3. **Peer connection lifecycle**
-   - ICE candidate gathering
-   - SDP offer/answer exchange
-   - DTLS handshake
-   - Data channel creation (ma-api, sendspin)
-   - Connection state monitoring
+**File**: `webrtc/WebRTCConnectionManager.kt` (~250 lines)
 
-**Estimated complexity**: High - Platform-specific native library integration
+Orchestrates the complete WebRTC connection lifecycle:
+- Manages SignalingClient + PeerConnection together
+- Handles connection state machine
+- Coordinates signaling with peer connection setup
+- Creates and manages data channels
+- Error handling and recovery
+
+**Responsibilities:**
+```kotlin
+class WebRTCConnectionManager(
+    private val signalingClient: SignalingClient,
+    private val scope: CoroutineScope
+) {
+    val connectionState: StateFlow<WebRTCConnectionState>
+    val dataChannel: StateFlow<WebRTCDataChannel?>
+
+    // Connect to MA server via WebRTC
+    suspend fun connect(remoteId: RemoteId)
+
+    // Disconnect and cleanup
+    suspend fun disconnect()
+
+    // Send data over channel (for ServiceClient integration later)
+    suspend fun send(message: String)
+}
+```
+
+**State Machine:**
+```
+Idle
+  → ConnectingToSignaling (connecting to wss://signaling.music-assistant.io)
+  → NegotiatingPeerConnection (exchanging SDP offer/answer)
+  → GatheringIceCandidates (finding network path via STUN/TURN)
+  → Connected (data channel open, ready for messages)
+  → Error (any failure along the way)
+```
+
+### 3.2: Peer Connection Abstraction (expect/actual)
+
+**Common Interface**: `webrtc/PeerConnectionWrapper.kt`
+
+```kotlin
+expect class PeerConnectionWrapper(
+    scope: CoroutineScope,
+    onIceCandidate: (IceCandidateData) -> Unit,
+    onDataChannel: (DataChannelWrapper) -> Unit,
+    onConnectionStateChange: (state: String) -> Unit
+) {
+    suspend fun initialize(iceServers: List<IceServer>)
+    suspend fun createOffer(): SessionDescription
+    suspend fun setRemoteAnswer(answer: SessionDescription)
+    suspend fun addIceCandidate(candidate: IceCandidateData)
+    fun createDataChannel(label: String): DataChannelWrapper
+    suspend fun close()
+}
+
+expect class DataChannelWrapper {
+    val label: String
+    val state: StateFlow<String>
+
+    fun send(message: String)
+    fun onMessage(callback: (String) -> Unit)
+    suspend fun close()
+}
+```
+
+### 3.3: Android Implementation (webrtc-kmp)
+
+**File**: `androidMain/.../webrtc/PeerConnectionWrapper.android.kt` (~200 lines)
+
+Uses `com.shepeliev.webrtc.kmp` library:
+```kotlin
+actual class PeerConnectionWrapper actual constructor(
+    scope: CoroutineScope,
+    onIceCandidate: (IceCandidateData) -> Unit,
+    onDataChannel: (DataChannelWrapper) -> Unit,
+    onConnectionStateChange: (state: String) -> Unit
+) {
+    private val peerConnection: RTCPeerConnection
+
+    actual suspend fun initialize(iceServers: List<IceServer>) {
+        // Use webrtc-kmp RTCPeerConnection
+        // Configure with ICE servers from signaling server
+        // Set up callbacks for ICE candidates and state changes
+    }
+
+    actual suspend fun createOffer(): SessionDescription {
+        // Generate SDP offer using webrtc-kmp
+        // Return as our SignalingMessage.SessionDescription format
+    }
+
+    // ... rest of implementation using webrtc-kmp APIs
+}
+```
+
+### 3.4: iOS Stubs (Future Implementation)
+
+**File**: `iosMain/.../webrtc/PeerConnectionWrapper.ios.kt` (~50 lines of TODOs)
+
+```kotlin
+actual class PeerConnectionWrapper actual constructor(
+    scope: CoroutineScope,
+    onIceCandidate: (IceCandidateData) -> Unit,
+    onDataChannel: (DataChannelWrapper) -> Unit,
+    onConnectionStateChange: (state: String) -> Unit
+) {
+    actual suspend fun initialize(iceServers: List<IceServer>) {
+        // TODO: iOS Implementation
+        // Will use webrtc-kmp RTCPeerConnection for iOS
+        // Same API as Android, different underlying native library
+        // Requires: Cocoapods or SPM integration for WebRTC.xcframework
+        throw NotImplementedError("iOS WebRTC not yet implemented")
+    }
+
+    // ... all other methods: throw NotImplementedError with detailed TODO comments
+}
+```
+
+### 3.5: Integration Flow
+
+**WebRTCConnectionManager.connect() implementation:**
+
+```
+1. User enters Remote ID and clicks "Connect via WebRTC"
+2. WebRTCConnectionManager.connect(remoteId) called
+3. State → ConnectingToSignaling
+4. SignalingClient.connect() to wss://signaling.music-assistant.io/ws
+5. Send SignalingMessage.Connect(remoteId)
+6. Receive SignalingMessage.SessionReady(sessionId, iceServers)
+7. State → NegotiatingPeerConnection
+8. PeerConnectionWrapper.initialize(iceServers)
+9. PeerConnectionWrapper.createOffer() → SDP offer
+10. Send SignalingMessage.Offer(sessionId, sdp)
+11. Receive SignalingMessage.Answer(sessionId, sdp)
+12. PeerConnectionWrapper.setRemoteAnswer(sdp)
+13. State → GatheringIceCandidates
+14. As ICE candidates discovered → Send SignalingMessage.IceCandidate(...)
+15. As ICE candidates received → PeerConnectionWrapper.addIceCandidate(...)
+16. Receive onDataChannel callback → "ma-api" data channel opened by server
+17. State → Connected
+18. Ready to send/receive messages over data channel
+```
+
+### 3.6: Data Channel Message Routing
+
+Once connected, the data channel carries the same WebSocket protocol that ServiceClient uses:
+
+**Message Format** (same as current WS):
+```json
+{
+  "type": "command",
+  "message_id": "uuid",
+  "data": { ... }
+}
+```
+
+**Strategy for Phase 3:**
+- Implement basic send/receive over data channel
+- Log received messages to verify protocol compatibility
+- Don't integrate with ServiceClient yet (Phase 4-5)
+
+**Files to create:**
+1. `webrtc/WebRTCConnectionManager.kt` - Core orchestration (~250 lines)
+2. `webrtc/PeerConnectionWrapper.kt` - Common interface (~100 lines)
+3. `androidMain/.../webrtc/PeerConnectionWrapper.android.kt` - Android impl (~200 lines)
+4. `iosMain/.../webrtc/PeerConnectionWrapper.ios.kt` - Stubs (~50 lines)
+5. `androidMain/.../webrtc/DataChannelWrapper.android.kt` - Android impl (~100 lines)
+6. `iosMain/.../webrtc/DataChannelWrapper.ios.kt` - Stubs (~30 lines)
+
+**Testing approach:**
+- Android emulator or device with network access
+- Real MA server with WebRTC enabled and Remote ID visible
+- Debug logs for each state transition
+- Verify data channel messages match WebSocket protocol
+
+**Estimated complexity**: High (native WebRTC integration)
+**Estimated LOC**: ~730 lines (550 Android, 80 iOS stubs, 100 common)
 
 ---
 
@@ -278,20 +540,30 @@ Music Assistant Gateway
 
 ### 📊 Summary Statistics
 
-**Lines of code written**: ~600 lines
-- Data models: 348 lines
-- Signaling client: 257 lines
+**Lines of code written**: ~600 lines (net after audit cleanup)
+- Data models: ~280 lines (after removing unused enums)
+- Signaling client: ~200 lines (refactored for lifecycle safety)
+- Settings integration: ~120 lines (refactored with tabs)
+- DI configuration: ~30 lines
 
-**Files created**: 7
-- 3 model files
-- 2 signaling client files
-- 2 UI/settings files (modified)
+**Files created**: 8
+- 3 model files (RemoteId, SignalingMessage, WebRTCState)
+- 2 signaling client files (SignalingClient, SignalingMessageSerializer)
+- 1 DI module (WebRTCModule)
+- 2 settings files (modified: SettingsRepository, SettingsViewModel, SettingsScreen)
 
-**Completion**: ~35% (4 of 10 phases complete)
+**Files deleted/cleaned**:
+- ~180 lines of unused/dead code removed (enums, dead composables)
 
-**Time invested**: Phase 1-2 implementation
+**Completion**: ~35% (Phases 1-2 complete, Phase 3 planned)
 
-**Next milestone**: WebRTC Peer Connection (platform-specific native integration)
+**Quality improvements**: All architectural issues from audit fixed
+- Thread safety (Mutex)
+- Lifecycle management (injected scope)
+- Forward compatibility (Unknown message type)
+- Input validation (RemoteId constructor)
+
+**Next milestone**: WebRTC Peer Connection implementation (Phase 3)
 
 ---
 

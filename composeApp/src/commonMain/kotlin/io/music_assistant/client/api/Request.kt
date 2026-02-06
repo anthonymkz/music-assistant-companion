@@ -448,14 +448,14 @@ data class Request @OptIn(ExperimentalUuidApi::class) constructor(
         fun play(
             media: List<String>,
             queueOrPlayerId: String,
-            option: QueueOption?,
-            radioMode: Boolean? = null,
+            option: QueueOption,
+            radioMode: Boolean,
         ) = Request(
             command = "player_queues/play_media",
             args = buildJsonObject {
                 put("media", JsonArray(media.map { JsonPrimitive(it) }))
-                option?.let { put("option", JsonPrimitive(it.name.lowercase())) }
-                radioMode?.let { put("radio_mode", JsonPrimitive(it)) }
+                put("option", JsonPrimitive(option.name.lowercase()))
+                put("radio_mode", JsonPrimitive(radioMode))
                 put("queue_id", JsonPrimitive(queueOrPlayerId))
             }
         )

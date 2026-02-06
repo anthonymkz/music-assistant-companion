@@ -167,13 +167,13 @@ class HomeScreenViewModel(
 
     fun onRecommendationItemClicked(mediaItem: PlayableItem) {
         dataSource.selectedPlayer?.queueOrPlayerId?.let {
-            playItem(mediaItem, it, QueueOption.PLAY)
+            playItem(mediaItem, it, QueueOption.PLAY, false)
         }
     }
 
-    fun onTrackPlayOption(track: PlayableItem, option: QueueOption) {
+    fun onTrackPlayOption(track: PlayableItem, option: QueueOption, radio: Boolean) {
         dataSource.selectedPlayer?.queueOrPlayerId?.let {
-            playItem(track, it, option)
+            playItem(track, it, option, radio)
         }
     }
 
@@ -255,7 +255,9 @@ class HomeScreenViewModel(
 
     fun refreshPlayers() = dataSource.refreshPlayersAndQueues()
     fun selectPlayer(player: Player) = dataSource.selectPlayer(player)
-    fun playerAction(playerId: String, action: PlayerAction) = dataSource.playerAction(playerId, action)
+    fun playerAction(playerId: String, action: PlayerAction) =
+        dataSource.playerAction(playerId, action)
+
     fun playerAction(data: PlayerData, action: PlayerAction) = dataSource.playerAction(data, action)
     fun queueAction(action: QueueAction) = dataSource.queueAction(action)
     fun onPlayersSortChanged(newSort: List<String>) = dataSource.onPlayersSortChanged(newSort)
@@ -269,7 +271,12 @@ class HomeScreenViewModel(
 
     private fun onOpenExternalLink(url: String) = viewModelScope.launch { _links.emit(url) }
 
-    private fun playItem(item: PlayableItem, queueOrPlayerId: String, option: QueueOption) {
+    private fun playItem(
+        item: PlayableItem,
+        queueOrPlayerId: String,
+        option: QueueOption,
+        radio: Boolean
+    ) {
         item.uri?.let {
             viewModelScope.launch {
                 apiClient.sendRequest(
@@ -277,7 +284,7 @@ class HomeScreenViewModel(
                         media = listOf(it),
                         queueOrPlayerId = queueOrPlayerId,
                         option = option,
-                        radioMode = false
+                        radioMode = radio
                     )
                 )
             }

@@ -377,7 +377,7 @@ private fun HomeContent(
     dataState: DataState<List<AppMediaItem.RecommendationFolder>>,
     serverUrl: String?,
     onRecommendationItemClick: (PlayableItem) -> Unit,
-    onTrackPlayOption: (PlayableItem, QueueOption) -> Unit,
+    onTrackPlayOption: (PlayableItem, QueueOption, Boolean) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
     providerIconFetcher: (@Composable (Modifier, String) -> Unit)

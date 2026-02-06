@@ -32,7 +32,7 @@ fun TrackWithMenu(
     modifier: Modifier = Modifier,
     item: PlayableItem,
     itemSize: Dp = 96.dp,
-    onTrackPlayOption: ((PlayableItem, QueueOption) -> Unit),
+    onTrackPlayOption: ((PlayableItem, QueueOption, Boolean) -> Unit),
     onItemClick: ((PlayableItem) -> Unit)? = null,
     playlistActions: ActionsViewModel.PlaylistActions? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
@@ -70,7 +70,7 @@ fun EpisodeWithMenu(
     modifier: Modifier = Modifier,
     item: PlayableItem,
     itemSize: Dp = 96.dp,
-    onTrackPlayOption: ((PlayableItem, QueueOption) -> Unit),
+    onTrackPlayOption: ((PlayableItem, QueueOption, Boolean) -> Unit),
     onItemClick: ((PlayableItem) -> Unit)? = null,
     playlistActions: ActionsViewModel.PlaylistActions? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
@@ -108,7 +108,7 @@ fun RadioWithMenu(
     modifier: Modifier = Modifier,
     item: PlayableItem,
     itemSize: Dp = 96.dp,
-    onTrackPlayOption: ((PlayableItem, QueueOption) -> Unit),
+    onTrackPlayOption: ((PlayableItem, QueueOption, Boolean) -> Unit),
     onItemClick: ((PlayableItem) -> Unit)? = null,
     playlistActions: ActionsViewModel.PlaylistActions? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
@@ -151,7 +151,7 @@ private fun PlayableItemWithMenu(
     modifier: Modifier = Modifier,
     item: PlayableItem,
     itemSize: Dp = 96.dp,
-    onTrackPlayOption: ((PlayableItem, QueueOption) -> Unit),
+    onTrackPlayOption: ((PlayableItem, QueueOption, Boolean) -> Unit),
     onItemClick: ((PlayableItem) -> Unit)? = null,
     playlistActions: ActionsViewModel.PlaylistActions? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
@@ -190,31 +190,40 @@ private fun PlayableItemWithMenu(
             DropdownMenuItem(
                 text = { Text("Play now") },
                 onClick = {
-                    onTrackPlayOption(item, QueueOption.REPLACE)
+                    onTrackPlayOption(item, QueueOption.REPLACE, false)
                     expandedTrackId = null
                 }
             )
             DropdownMenuItem(
                 text = { Text("Add and play") },
                 onClick = {
-                    onTrackPlayOption(item, QueueOption.PLAY)
+                    onTrackPlayOption(item, QueueOption.PLAY, false)
                     expandedTrackId = null
                 }
             )
             DropdownMenuItem(
                 text = { Text("Add and play next") },
                 onClick = {
-                    onTrackPlayOption(item, QueueOption.NEXT)
+                    onTrackPlayOption(item, QueueOption.NEXT, false)
                     expandedTrackId = null
                 }
             )
             DropdownMenuItem(
                 text = { Text("Add to bottom") },
                 onClick = {
-                    onTrackPlayOption(item, QueueOption.ADD)
+                    onTrackPlayOption(item, QueueOption.ADD, false)
                     expandedTrackId = null
                 }
             )
+            if (item.canStartRadio) {
+                DropdownMenuItem(
+                    text = { Text("Start radio") },
+                    onClick = {
+                        onTrackPlayOption(item, QueueOption.REPLACE, true)
+                        expandedTrackId = null
+                    }
+                )
+            }
 
             (item as? AppMediaItem)?.let {
                 DropdownMenuItem(

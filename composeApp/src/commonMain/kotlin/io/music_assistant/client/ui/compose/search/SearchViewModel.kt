@@ -119,7 +119,7 @@ class SearchViewModel(
         _state.update { it.copy(searchState = it.searchState.copy(libraryOnly = libraryOnly)) }
     }
 
-    fun onTrackClick(track: PlayableItem, option: QueueOption) {
+    fun onTrackClick(track: PlayableItem, option: QueueOption, radio: Boolean) {
         viewModelScope.launch {
             val queueId = mainDataSource.selectedPlayer?.queueOrPlayerId ?: return@launch
             track.uri?.let { uri ->
@@ -128,7 +128,7 @@ class SearchViewModel(
                         media = listOf(uri),
                         queueOrPlayerId = queueId,
                         option = option,
-                        radioMode = false
+                        radioMode = radio
                     )
                 )
             }

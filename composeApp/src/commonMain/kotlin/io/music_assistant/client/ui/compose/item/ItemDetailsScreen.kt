@@ -139,9 +139,9 @@ private fun ItemDetailsContent(
     serverUrl: String?,
     toastState: ToastState,
     onBack: () -> Unit,
-    onPlayClick: (QueueOption) -> Unit,
+    onPlayClick: (QueueOption, Boolean) -> Unit,
     onSubItemClick: (AppMediaItem) -> Unit,
-    onTrackClick: (PlayableItem, QueueOption) -> Unit,
+    onTrackClick: (PlayableItem, QueueOption, Boolean) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     onRemoveFromPlaylist: (String, Int) -> Unit,
     libraryActions: ActionsViewModel.LibraryActions,
@@ -309,7 +309,7 @@ private fun ItemDetailsContent(
 private fun HeaderSection(
     item: AppMediaItem,
     serverUrl: String?,
-    onPlayClick: (QueueOption) -> Unit,
+    onPlayClick: (QueueOption, Boolean) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions?,
     libraryActions: ActionsViewModel.LibraryActions,
     providerIconFetcher: @Composable ((Modifier, String) -> Unit)?,
@@ -367,7 +367,7 @@ private fun HeaderSection(
             ) {
 
                 Button(
-                    onClick = { onPlayClick(QueueOption.REPLACE) },
+                    onClick = { onPlayClick(QueueOption.REPLACE, false) },
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.PlayArrow, null)
@@ -384,9 +384,12 @@ private fun HeaderSection(
                         )
                     },
                     options = buildList {
-                        add(OverflowMenuOption("Add and play") { onPlayClick(QueueOption.PLAY) })
-                        add(OverflowMenuOption("Add and play next") { onPlayClick(QueueOption.NEXT) })
-                        add(OverflowMenuOption("Add to bottom") { onPlayClick(QueueOption.ADD) })
+                        add(OverflowMenuOption("Add and play") { onPlayClick(QueueOption.PLAY, false) })
+                        add(OverflowMenuOption("Add and play next") { onPlayClick(QueueOption.NEXT, false) })
+                        add(OverflowMenuOption("Add to bottom") { onPlayClick(QueueOption.ADD, false) })
+                        if(item.canStartRadio) {
+                            add(OverflowMenuOption("Start radio") { onPlayClick(QueueOption.REPLACE, true) })
+                        }
                         add(
                             OverflowMenuOption(
                                 if (item.isInLibrary) "Remove from library"

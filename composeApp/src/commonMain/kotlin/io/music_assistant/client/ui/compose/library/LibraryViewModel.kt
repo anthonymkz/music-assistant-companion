@@ -187,7 +187,7 @@ class LibraryViewModel(
         }
     }
 
-    fun onTrackClick(track: PlayableItem, option: QueueOption) {
+    fun onTrackClick(track: PlayableItem, option: QueueOption, radio: Boolean) {
         viewModelScope.launch {
             val queueId = mainDataSource.selectedPlayer?.queueOrPlayerId ?: return@launch
 
@@ -197,7 +197,7 @@ class LibraryViewModel(
                         media = listOf(uri),
                         queueOrPlayerId = queueId,
                         option = option,
-                        radioMode = false
+                        radioMode = radio
                     )
                 )
             }
