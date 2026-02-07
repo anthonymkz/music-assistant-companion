@@ -19,26 +19,27 @@ sealed interface SignalingMessage {
      * Request connection to a Music Assistant server by Remote ID.
      */
     @Serializable
-    @SerialName("connect")
-    data class Connect(
+    @SerialName("connect-request")
+    data class ConnectRequest(
         @SerialName("remoteId") val remoteId: String
     ) : SignalingMessage {
         @SerialName("type")
-        override val type: String = "connect"
+        override val type: String = "connect-request"
     }
 
     /**
      * Signaling Server → Client
-     * Confirms session is ready and provides ICE servers and session ID.
+     * Connection accepted. Provides session ID, remote ID, and ICE servers.
      */
     @Serializable
-    @SerialName("session-ready")
-    data class SessionReady(
-        @SerialName("sessionId") val sessionId: String,
-        @SerialName("iceServers") val iceServers: List<IceServer>
+    @SerialName("connected")
+    data class Connected(
+        @SerialName("sessionId") val sessionId: String? = null,
+        @SerialName("remoteId") val remoteId: String? = null,
+        @SerialName("iceServers") val iceServers: List<IceServer> = emptyList()
     ) : SignalingMessage {
         @SerialName("type")
-        override val type: String = "session-ready"
+        override val type: String = "connected"
     }
 
     /**
@@ -48,6 +49,7 @@ sealed interface SignalingMessage {
     @Serializable
     @SerialName("offer")
     data class Offer(
+        @SerialName("remoteId") val remoteId: String,
         @SerialName("sessionId") val sessionId: String,
         @SerialName("data") val data: SessionDescription
     ) : SignalingMessage {
@@ -76,6 +78,7 @@ sealed interface SignalingMessage {
     @Serializable
     @SerialName("ice-candidate")
     data class IceCandidate(
+        @SerialName("remoteId") val remoteId: String,
         @SerialName("sessionId") val sessionId: String,
         @SerialName("data") val data: IceCandidateData
     ) : SignalingMessage {
@@ -99,28 +102,15 @@ sealed interface SignalingMessage {
 
     /**
      * Signaling Server → Client
-     * Notification that the gateway disconnected.
+     * Notification that the peer (gateway) disconnected.
      */
     @Serializable
-    @SerialName("client-disconnected")
-    data class ClientDisconnected(
-        @SerialName("sessionId") val sessionId: String
+    @SerialName("peer-disconnected")
+    data class PeerDisconnected(
+        @SerialName("sessionId") val sessionId: String? = null
     ) : SignalingMessage {
         @SerialName("type")
-        override val type: String = "client-disconnected"
-    }
-
-    /**
-     * Signaling Server → Client
-     * Gateway registered successfully (for gateway use, clients shouldn't receive this).
-     */
-    @Serializable
-    @SerialName("registered")
-    data class Registered(
-        @SerialName("remoteId") val remoteId: String
-    ) : SignalingMessage {
-        @SerialName("type")
-        override val type: String = "registered"
+        override val type: String = "peer-disconnected"
     }
 
     /**

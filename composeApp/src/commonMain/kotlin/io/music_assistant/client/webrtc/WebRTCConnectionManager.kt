@@ -7,8 +7,11 @@ import io.music_assistant.client.webrtc.model.WebRTCConnectionState
 import io.music_assistant.client.webrtc.model.WebRTCError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -49,7 +52,7 @@ import kotlinx.coroutines.sync.withLock
  * }
  *
  * // Connect
- * manager.connect(RemoteId.parse("MA-XXXX-XXXX")!!)
+ * manager.connect(RemoteId.parse("PGSVXKGZ-JCFA6-MOH4U-PBH5Q9HY")!!)
  *
  * // Send message over data channel
  * manager.send("""{"type":"command","data":{...}}""")
@@ -75,6 +78,9 @@ class WebRTCConnectionManager(
     private val _connectionState = MutableStateFlow<WebRTCConnectionState>(WebRTCConnectionState.Idle)
     val connectionState: StateFlow<WebRTCConnectionState> = _connectionState.asStateFlow()
 
+    private val _incomingMessages = MutableSharedFlow<String>(extraBufferCapacity = 100)
+    val incomingMessages: SharedFlow<String> = _incomingMessages.asSharedFlow()
+
     /**
      * Connect to Music Assistant server via WebRTC.
      *
@@ -88,7 +94,7 @@ class WebRTCConnectionManager(
             return@withLock
         }
 
-        logger.i { "Starting WebRTC connection to Remote ID: ${remoteId.formatted}" }
+        logger.i { "Starting WebRTC connection to Remote ID: $remoteId" }
         currentRemoteId = remoteId
         _connectionState.value = WebRTCConnectionState.ConnectingToSignaling
 
@@ -99,9 +105,9 @@ class WebRTCConnectionManager(
             // Step 2: Listen for signaling messages
             startListeningToSignaling()
 
-            // Step 3: Send Connect message
-            logger.d { "Sending Connect message" }
-            signalingClient.sendMessage(SignalingMessage.Connect(remoteId = remoteId.rawId))
+            // Step 3: Send ConnectRequest message
+            logger.d { "Sending ConnectRequest message" }
+            signalingClient.sendMessage(SignalingMessage.ConnectRequest(remoteId = remoteId.rawId))
 
             // Subsequent steps handled in signaling message handlers
 
@@ -158,23 +164,23 @@ class WebRTCConnectionManager(
         logger.d { "Received signaling message: ${message.type}" }
 
         when (message) {
-            is SignalingMessage.SessionReady -> handleSessionReady(message)
+            is SignalingMessage.Connected -> handleConnected(message)
             is SignalingMessage.Answer -> handleAnswer(message)
             is SignalingMessage.IceCandidate -> handleIceCandidate(message)
             is SignalingMessage.Error -> handleSignalingError(message)
-            is SignalingMessage.ClientDisconnected -> handleClientDisconnected(message)
+            is SignalingMessage.PeerDisconnected -> handlePeerDisconnected(message)
             is SignalingMessage.Unknown -> logger.w { "Received unknown message type: ${message.type}" }
             else -> logger.d { "Ignoring message type: ${message.type}" }
         }
     }
 
     /**
-     * Handle SessionReady: Initialize peer connection and create offer.
+     * Handle Connected: Initialize peer connection and create offer.
      */
-    private suspend fun handleSessionReady(message: SignalingMessage.SessionReady) {
-        logger.i { "Session ready. Session ID: ${message.sessionId}, ICE servers: ${message.iceServers.size}" }
+    private suspend fun handleConnected(message: SignalingMessage.Connected) {
+        logger.i { "Connected. Session ID: ${message.sessionId}, ICE servers: ${message.iceServers.size}" }
         currentSessionId = message.sessionId
-        _connectionState.value = WebRTCConnectionState.NegotiatingPeerConnection(message.sessionId)
+        _connectionState.value = WebRTCConnectionState.NegotiatingPeerConnection(message.sessionId ?: "")
 
         try {
             // Create peer connection with callbacks
@@ -184,50 +190,16 @@ class WebRTCConnectionManager(
                     scope.launch {
                         signalingClient.sendMessage(
                             SignalingMessage.IceCandidate(
-                                sessionId = message.sessionId,
+                                remoteId = currentRemoteId!!.rawId,
+                                sessionId = message.sessionId ?: "",
                                 data = candidate
                             )
                         )
                     }
                 },
                 onDataChannel = { channel ->
-                    // Server opened data channel
-                    logger.i { "Data channel received: ${channel.label}" }
-                    if (channel.label == "ma-api") {
-                        // Cleanup previous channel if exists (reconnection edge case)
-                        dataChannelStateJob?.cancel()
-                        val oldChannel = dataChannel
-                        if (oldChannel != null) {
-                            scope.launch { oldChannel.close() }
-                        }
-
-                        dataChannel = channel
-                        channel.onMessage { msg ->
-                            logger.d { "Received message on data channel: ${msg.take(100)}" }
-                            // TODO Phase 4: Route to ServiceClient
-                        }
-
-                        // Check initial state (may already be open)
-                        if (channel.state.value == "open") {
-                            logger.d { "Data channel already open" }
-                            _connectionState.value = WebRTCConnectionState.Connected(
-                                sessionId = message.sessionId,
-                                remoteId = currentRemoteId!!
-                            )
-                        }
-
-                        // Monitor future state changes
-                        dataChannelStateJob = scope.launch {
-                            channel.state.collect { state ->
-                                if (state == "open") {
-                                    _connectionState.value = WebRTCConnectionState.Connected(
-                                        sessionId = message.sessionId,
-                                        remoteId = currentRemoteId!!
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    // Server-created data channel (e.g., "sendspin" in the future)
+                    logger.i { "Remote data channel received: ${channel.label}" }
                 },
                 onConnectionStateChange = { state ->
                     logger.d { "Peer connection state: $state" }
@@ -239,7 +211,12 @@ class WebRTCConnectionManager(
             // Initialize with ICE servers
             pc.initialize(message.iceServers)
 
-            // Create SDP offer
+            // Create data channel BEFORE offer (required: adds m=application to SDP)
+            logger.d { "Creating ma-api data channel" }
+            val channel = pc.createDataChannel("ma-api")
+            setupDataChannel(channel, message.sessionId ?: "")
+
+            // Create SDP offer (now includes m=application section)
             logger.d { "Creating SDP offer" }
             val offer = pc.createOffer()
 
@@ -247,12 +224,13 @@ class WebRTCConnectionManager(
             logger.d { "Sending SDP offer" }
             signalingClient.sendMessage(
                 SignalingMessage.Offer(
-                    sessionId = message.sessionId,
+                    remoteId = currentRemoteId!!.rawId,
+                    sessionId = message.sessionId ?: "",
                     data = offer
                 )
             )
 
-            _connectionState.value = WebRTCConnectionState.GatheringIceCandidates(message.sessionId)
+            _connectionState.value = WebRTCConnectionState.GatheringIceCandidates(message.sessionId ?: "")
 
         } catch (e: Exception) {
             logger.e(e) { "Failed to initialize peer connection" }
@@ -318,14 +296,55 @@ class WebRTCConnectionManager(
     }
 
     /**
-     * Handle client disconnected notification.
+     * Handle peer disconnected notification.
      */
-    private fun handleClientDisconnected(message: SignalingMessage.ClientDisconnected) {
-        logger.i { "Remote client disconnected: ${message.sessionId}" }
+    private fun handlePeerDisconnected(message: SignalingMessage.PeerDisconnected) {
+        logger.i { "Remote peer disconnected: ${message.sessionId}" }
         _connectionState.value = WebRTCConnectionState.Error(
             WebRTCError.ConnectionError("Remote peer disconnected")
         )
         scope.launch { cleanup() }
+    }
+
+    /**
+     * Set up the ma-api data channel: message listener and state monitoring.
+     */
+    private fun setupDataChannel(channel: DataChannelWrapper, sessionId: String) {
+        // Cleanup previous channel if exists (reconnection edge case)
+        dataChannelStateJob?.cancel()
+        val oldChannel = dataChannel
+        if (oldChannel != null) {
+            scope.launch { oldChannel.close() }
+        }
+
+        dataChannel = channel
+        channel.onMessage { msg ->
+            logger.d { "Received message on data channel: ${msg.take(100)}" }
+            scope.launch {
+                _incomingMessages.emit(msg)
+            }
+        }
+
+        // Check initial state (may already be open)
+        if (channel.state.value == "open") {
+            logger.d { "Data channel already open" }
+            _connectionState.value = WebRTCConnectionState.Connected(
+                sessionId = sessionId,
+                remoteId = currentRemoteId!!
+            )
+        }
+
+        // Monitor future state changes
+        dataChannelStateJob = scope.launch {
+            channel.state.collect { state ->
+                if (state == "open") {
+                    _connectionState.value = WebRTCConnectionState.Connected(
+                        sessionId = sessionId,
+                        remoteId = currentRemoteId!!
+                    )
+                }
+            }
+        }
     }
 
     /**

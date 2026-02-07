@@ -18,7 +18,9 @@
       "Bash(gh pr view:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "WebFetch(domain:www.music-assistant.io)"
+      "WebFetch(domain:www.music-assistant.io)",
+      "WebFetch(domain:app.music-assistant.io)",
+      "Bash(gh search:*)"
     ]
   }
 }

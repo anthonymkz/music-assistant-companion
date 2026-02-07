@@ -24,6 +24,13 @@ class SettingsViewModel(
         apiClient.disconnectByUser()
     }
 
+    fun attemptWebRTCConnection(remoteId: String) {
+        val parsed = io.music_assistant.client.webrtc.model.RemoteId.parse(remoteId)
+        if (parsed != null) {
+            apiClient.connectWebRTC(parsed)
+        }
+    }
+
     fun logout() {
         viewModelScope.launch {
             // Logout on server and clear token locally

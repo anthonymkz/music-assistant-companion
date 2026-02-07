@@ -199,4 +199,16 @@ class SettingsRepository(
         settings.putString("webrtc_remote_id", remoteId)
         _webrtcRemoteId.update { remoteId }
     }
+
+    // Last successful connection mode ("direct" or "webrtc")
+    // Used for autoconnect - reconnects using the last mode that worked
+    private val _lastConnectionMode = MutableStateFlow(
+        settings.getStringOrNull("last_connection_mode")
+    )
+    val lastConnectionMode = _lastConnectionMode.asStateFlow()
+
+    fun setLastConnectionMode(mode: String) {
+        settings.putString("last_connection_mode", mode)
+        _lastConnectionMode.update { mode }
+    }
 }

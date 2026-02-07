@@ -10,6 +10,6 @@ fun initKoin(
 ) {
     startKoin {
         config?.invoke(this)
-        modules(sharedModule, *platformModules)
+        modules(sharedModule, webrtcModule, *platformModules)
     }
 }

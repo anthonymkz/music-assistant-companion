@@ -138,11 +138,14 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
 
                 // Auto-reconnect on error ONLY if user hasn't changed the connection info
                 // This prevents auto-reconnect to old server when user is trying to connect to new server
+                // Does NOT auto-reconnect when user is using WebRTC (different failure mode)
+                val preferredMethod by viewModel.preferredConnectionMethod.collectAsStateWithLifecycle()
                 LaunchedEffect(sessionState) {
                     val connInfo = savedConnectionInfo
                     if (sessionState is SessionState.Disconnected.Error &&
                         connInfo != null &&
-                        !autoReconnectAttempted
+                        !autoReconnectAttempted &&
+                        preferredMethod != "webrtc"
                     ) {
                         // Only auto-reconnect if text fields match saved connection info
                         // (i.e., user hasn't changed anything)
@@ -192,17 +195,17 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                             onPortChange = { port = it },
                             onTlsChange = { isTls = it },
                             onDirectConnect = { viewModel.attemptConnection(ipAddress, port, isTls) },
-                            directConnectEnabled = ipAddress.isValidHost() && port.isIpPort()
+                            directConnectEnabled = ipAddress.isValidHost() && port.isIpPort(),
+                            sessionState = sessionState
                         )
                     }
 
                     SessionState.Connecting -> {
-                        ConnectingSection(ipAddress, port)
+                        ConnectingSection(ipAddress, port, preferredMethod)
                     }
 
                     is SessionState.Reconnecting -> {
-                        // Show reconnecting state - similar to connecting but with attempt info
-                        ConnectingSection(ipAddress, port)
+                        ConnectingSection(ipAddress, port, preferredMethod)
                     }
 
                     is SessionState.Connected -> {
@@ -281,7 +284,8 @@ private fun ConnectionMethodTabs(
     onPortChange: (String) -> Unit,
     onTlsChange: (Boolean) -> Unit,
     onDirectConnect: () -> Unit,
-    directConnectEnabled: Boolean
+    directConnectEnabled: Boolean,
+    sessionState: SessionState
 ) {
     val preferredMethod by viewModel.preferredConnectionMethod.collectAsStateWithLifecycle()
     val selectedTab = if (preferredMethod == "webrtc") 1 else 0
@@ -331,7 +335,8 @@ private fun ConnectionMethodTabs(
                 WebRTCConnectionContent(
                     remoteId = webrtcRemoteId,
                     onRemoteIdChange = { viewModel.setWebrtcRemoteId(it.uppercase()) },
-                    onConnect = { /* TODO: Implement WebRTC connection */ }
+                    onConnect = { viewModel.attemptWebRTCConnection(webrtcRemoteId) },
+                    sessionState = sessionState
                 )
             }
         }
@@ -421,9 +426,12 @@ private fun DirectConnectionContent(
 private fun WebRTCConnectionContent(
     remoteId: String,
     onRemoteIdChange: (String) -> Unit,
-    onConnect: () -> Unit
+    onConnect: () -> Unit,
+    sessionState: SessionState
 ) {
     val isInvalidRemoteId = remoteId.isNotBlank() && !RemoteId.isValid(remoteId)
+    val isConnected = sessionState is SessionState.Connected.WebRTC
+    val isConnecting = sessionState is SessionState.Connecting
 
     Text(
         text = "Connect from anywhere without port forwarding",
@@ -440,7 +448,7 @@ private fun WebRTCConnectionContent(
         value = remoteId,
         onValueChange = onRemoteIdChange,
         label = { Text("Remote ID") },
-        placeholder = { Text("MA-XXXX-XXXX") },
+        placeholder = { Text("XXXXXXXX-XXXXX-XXXXX-XXXXXXXX") },
         singleLine = true,
         colors = TextFieldDefaults.colors(
             focusedTextColor = MaterialTheme.colorScheme.onBackground,
@@ -474,22 +482,33 @@ private fun WebRTCConnectionContent(
         modifier = Modifier.padding(bottom = 12.dp)
     )
 
-    // Connect button (disabled for now until implementation is complete)
+    // Connect button
     Button(
         onClick = onConnect,
         modifier = Modifier.fillMaxWidth(),
-        enabled = false // TODO: Enable when WebRTC connection is implemented
+        enabled = remoteId.isNotBlank() && !isInvalidRemoteId && !isConnected && !isConnecting
     ) {
-        Text("Connect via WebRTC (Coming Soon)")
+        Text(
+            when {
+                isConnected -> "Connected"
+                isConnecting -> "Connecting..."
+                else -> "Connect via WebRTC"
+            }
+        )
     }
 }
 
 @Composable
-private fun ConnectingSection(ipAddress: String, port: String) {
+private fun ConnectingSection(ipAddress: String, port: String, preferredMethod: String?) {
+    val text = if (preferredMethod == "webrtc") {
+        "Connecting to remote server..."
+    } else {
+        "Connecting to $ipAddress:$port..."
+    }
     SectionCard {
         Text(
             modifier = Modifier.fillMaxWidth(),
-            text = "Connecting to $ipAddress:$port...",
+            text = text,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center

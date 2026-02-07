@@ -25,14 +25,13 @@ object SignalingMessageSerializer : JsonContentPolymorphicSerializer<SignalingMe
             ?: throw IllegalArgumentException("Missing 'type' field in signaling message")
 
         return when (type) {
-            "connect" -> SignalingMessage.Connect.serializer()
-            "session-ready" -> SignalingMessage.SessionReady.serializer()
+            "connect-request" -> SignalingMessage.ConnectRequest.serializer()
+            "connected" -> SignalingMessage.Connected.serializer()
             "offer" -> SignalingMessage.Offer.serializer()
             "answer" -> SignalingMessage.Answer.serializer()
             "ice-candidate" -> SignalingMessage.IceCandidate.serializer()
             "error" -> SignalingMessage.Error.serializer()
-            "client-disconnected" -> SignalingMessage.ClientDisconnected.serializer()
-            "registered" -> SignalingMessage.Registered.serializer()
+            "peer-disconnected" -> SignalingMessage.PeerDisconnected.serializer()
             else -> {
                 logger.w { "Received unknown signaling message type: $type (forward compatibility fallback)" }
                 SignalingMessage.Unknown.serializer()

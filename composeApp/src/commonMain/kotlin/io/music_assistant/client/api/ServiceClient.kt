@@ -17,8 +17,19 @@ import io.music_assistant.client.data.model.server.events.Event
 import io.music_assistant.client.settings.SettingsRepository
 import io.music_assistant.client.utils.AuthProcessState
 import io.music_assistant.client.utils.SessionState
+import io.music_assistant.client.utils.connectionInfo
 import io.music_assistant.client.utils.myJson
 import io.music_assistant.client.utils.resultAs
+import io.music_assistant.client.utils.sendMessage
+import io.music_assistant.client.utils.session
+import io.music_assistant.client.utils.update
+import io.music_assistant.client.webrtc.SignalingClient
+import io.music_assistant.client.webrtc.WebRTCConnectionManager
+import io.music_assistant.client.webrtc.model.RemoteId
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
+import org.koin.core.parameter.parametersOf
+import org.koin.core.qualifier.named
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -40,7 +51,7 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
+class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, KoinComponent {
 
     private val supervisorJob = SupervisorJob()
     override val coroutineContext: CoroutineContext = supervisorJob + Dispatchers.IO
@@ -49,6 +60,11 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
         install(WebSockets) { contentConverter = KotlinxWebsocketSerializationConverter(myJson) }
     }
     private var listeningJob: Job? = null
+
+    // WebRTC components - created lazily on first WebRTC connection
+    private val webrtcHttpClient: HttpClient by inject(named("webrtcHttpClient"))
+    private var webrtcManager: WebRTCConnectionManager? = null
+    private var webrtcListeningJob: Job? = null
 
     private var _sessionState: MutableStateFlow<SessionState> =
         MutableStateFlow(SessionState.Disconnected.Initial)
@@ -64,12 +80,12 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
             _sessionState.collect {
                 when (it) {
                     is SessionState.Connected -> {
-                        settings.updateConnectionInfo(it.connectionInfo)
+                        it.connectionInfo?.let { connInfo -> settings.updateConnectionInfo(connInfo) }
                     }
 
                     is SessionState.Reconnecting -> {
                         // Keep connection info during reconnection (no UI reload)
-                        settings.updateConnectionInfo(it.connectionInfo)
+                        it.connectionInfo?.let { connInfo -> settings.updateConnectionInfo(connInfo) }
                     }
 
                     is SessionState.Disconnected -> {
@@ -81,9 +97,31 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                             is SessionState.Disconnected.Error -> Unit
 
                             SessionState.Disconnected.Initial -> {
-                                settings.connectionInfo.value?.let { connectionInfo ->
-                                    connect(connectionInfo)
-                                } ?: _sessionState.update { SessionState.Disconnected.NoServerData }
+                                // Autoconnect based on last successful connection mode
+                                when (settings.lastConnectionMode.value) {
+                                    "webrtc" -> {
+                                        val remoteIdStr = settings.webrtcRemoteId.value
+                                        val remoteId = remoteIdStr.takeIf { it.isNotBlank() }?.let {
+                                            RemoteId.parse(it)
+                                        }
+                                        if (remoteId != null) {
+                                            connectWebRTC(remoteId)
+                                        } else {
+                                            // WebRTC selected but no valid remoteId - don't autoconnect
+                                            _sessionState.update { SessionState.Disconnected.NoServerData }
+                                        }
+                                    }
+                                    "direct", null -> {
+                                        // Default to Direct for existing users (null) or explicit "direct"
+                                        settings.connectionInfo.value?.let { connectionInfo ->
+                                            connect(connectionInfo)
+                                        } ?: _sessionState.update { SessionState.Disconnected.NoServerData }
+                                    }
+                                    else -> {
+                                        // Unknown mode - no autoconnect
+                                        _sessionState.update { SessionState.Disconnected.NoServerData }
+                                    }
+                                }
                             }
                         }
                     }
@@ -115,7 +153,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                             ) {
                                 // Preserve server/user/auth from Reconnecting state
                                 _sessionState.update {
-                                    SessionState.Connected(
+                                    SessionState.Connected.Direct(
                                         session = this,
                                         connectionInfo = connection,
                                         serverInfo = currentState.serverInfo,
@@ -135,7 +173,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                             ) {
                                 // Preserve server/user/auth from Reconnecting state
                                 _sessionState.update {
-                                    SessionState.Connected(
+                                    SessionState.Connected.Direct(
                                         session = this,
                                         connectionInfo = connection,
                                         serverInfo = currentState.serverInfo,
@@ -173,7 +211,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                                 connection.port,
                                 "/ws",
                             ) {
-                                _sessionState.update { SessionState.Connected(this, connection) }
+                                _sessionState.update { SessionState.Connected.Direct(this, connection) }
+                                settings.setLastConnectionMode("direct")
                                 listenForMessages()
                             }
                         } else {
@@ -183,7 +222,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                                 connection.port,
                                 "/ws",
                             ) {
-                                _sessionState.update { SessionState.Connected(this, connection) }
+                                _sessionState.update { SessionState.Connected.Direct(this, connection) }
+                                settings.setLastConnectionMode("direct")
                                 listenForMessages()
                             }
                         }
@@ -197,6 +237,126 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
         }
     }
 
+    fun connectWebRTC(remoteId: RemoteId) {
+        when (val currentState = _sessionState.value) {
+            SessionState.Connecting,
+            is SessionState.Connected -> return
+
+            is SessionState.Reconnecting.WebRTC -> {
+                Logger.withTag("ServiceClient")
+                    .i { "🔄 RECONNECT ATTEMPT (WebRTC) - staying in Reconnecting state" }
+                launch {
+                    try {
+                        val manager = getOrCreateWebRTCManager()
+                        manager.connect(remoteId)
+
+                        // Wait for connection to establish
+                        launch {
+                            manager.connectionState.collect { state ->
+                                when (state) {
+                                    is io.music_assistant.client.webrtc.model.WebRTCConnectionState.Connected -> {
+                                        _sessionState.update {
+                                            SessionState.Connected.WebRTC(
+                                                manager = manager,
+                                                remoteId = remoteId,
+                                                serverInfo = currentState.serverInfo,
+                                                user = currentState.user,
+                                                authProcessState = currentState.authProcessState,
+                                                wasAutoLogin = currentState.wasAutoLogin
+                                            )
+                                        }
+                                        startWebRTCMessageListener(manager)
+                                        settings.setLastConnectionMode("webrtc")
+                                    }
+                                    is io.music_assistant.client.webrtc.model.WebRTCConnectionState.Error -> {
+                                        Logger.withTag("ServiceClient")
+                                            .w { "WebRTC reconnect failed: ${state.error}" }
+                                    }
+                                    else -> {}
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Logger.withTag("ServiceClient")
+                            .w { "WebRTC reconnect attempt failed: ${e.message}" }
+                    }
+                }
+            }
+
+            is SessionState.Reconnecting.Direct -> {
+                // User switched modes during reconnection - not supported
+                Logger.withTag("ServiceClient").w { "Cannot switch to WebRTC during Direct reconnection" }
+                return
+            }
+
+            is SessionState.Disconnected -> {
+                _sessionState.update { SessionState.Connecting }
+                launch {
+                    try {
+                        val manager = getOrCreateWebRTCManager()
+                        manager.connect(remoteId)
+
+                        // Wait for connection state changes
+                        launch {
+                            manager.connectionState.collect { state ->
+                                when (state) {
+                                    is io.music_assistant.client.webrtc.model.WebRTCConnectionState.Connected -> {
+                                        _sessionState.update {
+                                            SessionState.Connected.WebRTC(
+                                                manager = manager,
+                                                remoteId = remoteId
+                                            )
+                                        }
+                                        startWebRTCMessageListener(manager)
+                                        settings.setLastConnectionMode("webrtc")
+                                    }
+                                    is io.music_assistant.client.webrtc.model.WebRTCConnectionState.Error -> {
+                                        _sessionState.update {
+                                            SessionState.Disconnected.Error(
+                                                Exception("WebRTC connection failed: ${state.error}")
+                                            )
+                                        }
+                                    }
+                                    else -> {}
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        _sessionState.update {
+                            SessionState.Disconnected.Error(Exception("WebRTC connection failed: ${e.message}"))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun getOrCreateWebRTCManager(): WebRTCConnectionManager {
+        // Recreate manager on each connection (as per user requirement #1)
+        webrtcManager?.let {
+            launch { it.disconnect() }
+        }
+
+        val signalingClient = SignalingClient(webrtcHttpClient, this)
+        val manager = WebRTCConnectionManager(signalingClient, this)
+        webrtcManager = manager
+        return manager
+    }
+
+    private fun startWebRTCMessageListener(manager: WebRTCConnectionManager) {
+        webrtcListeningJob?.cancel()
+        webrtcListeningJob = launch {
+            manager.incomingMessages.collect { jsonString ->
+                try {
+                    val message = myJson.decodeFromString<JsonObject>(jsonString)
+                    handleIncomingMessage(message)
+                } catch (e: Exception) {
+                    Logger.e(e) { "Failed to parse WebRTC message: $jsonString" }
+                }
+            }
+        }
+    }
+
     suspend fun login(
         username: String,
         password: String,
@@ -205,7 +365,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
         if (currentState !is SessionState.Connected) {
             return
         }
-        _sessionState.update { currentState.copy(authProcessState = AuthProcessState.InProgress) }
+        _sessionState.update { currentState.update(authProcessState = AuthProcessState.InProgress) }
 
         try {
             val response =
@@ -217,7 +377,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
 
             if (response.isFailure) {
                 _sessionState.update {
-                    currentState.copy(
+                    currentState.update(
                         authProcessState = AuthProcessState.Failed(
                             "No response from server"
                         )
@@ -233,7 +393,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                         ?: "Authentication failed"
                 settings.updateToken(null)
                 _sessionState.update {
-                    currentState.copy(
+                    currentState.update(
                         authProcessState = AuthProcessState.Failed(
                             errorMessage
                         )
@@ -245,7 +405,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
             response.resultAs<LoginResponse>()?.let { auth ->
                 if (!auth.success) {
                     _sessionState.update {
-                        currentState.copy(
+                        currentState.update(
                             authProcessState = AuthProcessState.Failed(
                                 auth.error ?: "Authentication failed"
                             )
@@ -255,7 +415,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                 }
                 if (auth.token.isNullOrBlank()) {
                     _sessionState.update {
-                        currentState.copy(
+                        currentState.update(
                             authProcessState = AuthProcessState.Failed(
                                 "No token received"
                             )
@@ -265,7 +425,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                 }
                 if (auth.user == null) {
                     _sessionState.update {
-                        currentState.copy(
+                        currentState.update(
                             authProcessState = AuthProcessState.Failed(
                                 "No user data received"
                             )
@@ -276,7 +436,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                 authorize(auth.token)
             } ?: run {
                 _sessionState.update {
-                    currentState.copy(
+                    currentState.update(
                         authProcessState = AuthProcessState.Failed(
                             "Failed to parse auth data"
                         )
@@ -289,7 +449,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                 return
             }
             _sessionState.update {
-                currentState.copy(
+                currentState.update(
                     authProcessState = AuthProcessState.Failed(
                         e.message ?: "Exception happened: $e"
                     )
@@ -307,7 +467,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
         }
         // Update state synchronously
         _sessionState.update {
-            currentState.copy(
+            currentState.update(
                 authProcessState = AuthProcessState.LoggedOut,
                 user = null
             )
@@ -328,7 +488,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
             if (currentState !is SessionState.Connected) {
                 return
             }
-            _sessionState.update { currentState.copy(authProcessState = AuthProcessState.InProgress) }
+            _sessionState.update { currentState.update(authProcessState = AuthProcessState.InProgress) }
             val response = sendRequest(Request.Auth.authorize(token, settings.deviceName.value))
             currentState = _sessionState.value
             if (currentState !is SessionState.Connected) {
@@ -337,7 +497,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
             if (response.isFailure) {
                 Logger.e(response.exceptionOrNull().toString())
                 _sessionState.update {
-                    currentState.copy(
+                    currentState.update(
                         authProcessState = AuthProcessState.Failed(
                             "No response from server"
                         )
@@ -351,7 +511,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                         ?: "Authentication failed"
                 settings.updateToken(null)
                 _sessionState.update {
-                    currentState.copy(
+                    currentState.update(
                         authProcessState = AuthProcessState.Failed(
                             errorMessage
                         )
@@ -362,7 +522,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
             response.resultAs<AuthorizationResponse>()?.user?.let { user ->
                 settings.updateToken(token)
                 _sessionState.update {
-                    currentState.copy(
+                    currentState.update(
                         authProcessState = AuthProcessState.NotStarted,
                         user = user,
                         wasAutoLogin = isAutoLogin
@@ -370,7 +530,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                 }
             } ?: run {
                 _sessionState.update {
-                    currentState.copy(
+                    currentState.update(
                         authProcessState = AuthProcessState.Failed(
                             "Failed to parse user data"
                         )
@@ -383,7 +543,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                 return
             }
             _sessionState.update {
-                currentState.copy(
+                currentState.update(
                     authProcessState = AuthProcessState.Failed(
                         e.message ?: "Exception happened: $e"
                     )
@@ -393,39 +553,46 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
         }
     }
 
+    private suspend fun handleIncomingMessage(message: JsonObject) {
+        when {
+            message.containsKey("message_id") -> {
+                val commandAnswer = Answer(message)
+                pendingResponses.remove(commandAnswer.messageId)?.invoke(commandAnswer)
+            }
+
+            message.containsKey("server_id") -> {
+                val state = _sessionState.value
+                if (state is SessionState.Connected) {
+                    _sessionState.update {
+                        state.update(serverInfo = myJson.decodeFromJsonElement(message))
+                    }
+                }
+            }
+
+            message.containsKey("event") -> {
+                Event(message).event()?.let { _eventsFlow.emit(it) }
+            }
+
+            else -> Logger.withTag("ServiceClient").i { "Unknown message: $message" }
+        }
+    }
+
     private suspend fun listenForMessages() {
         try {
             while (true) {
                 val state = _sessionState.value
-                if (state !is SessionState.Connected) {
+                if (state !is SessionState.Connected.Direct) {
                     continue
                 }
                 val message = state.session.receiveDeserialized<JsonObject>()
-                when {
-                    message.containsKey("message_id") -> {
-                        val commandAnswer = Answer(message)
-                        pendingResponses.remove(commandAnswer.messageId)?.invoke(commandAnswer)
-                    }
-
-                    message.containsKey("server_id") -> {
-                        _sessionState.update {
-                            state.copy(serverInfo = myJson.decodeFromJsonElement(message))
-                        }
-                    }
-
-                    message.containsKey("event") -> {
-                        Event(message).event()?.let { _eventsFlow.emit(it) }
-                    }
-
-                    else -> Logger.withTag("ServiceClient").i { "Unknown message: $message" }
-                }
+                handleIncomingMessage(message)
             }
         } catch (e: Exception) {
             val state = _sessionState.value
             if (state is SessionState.Disconnected.ByUser) {
                 return
             }
-            if (state is SessionState.Connected) {
+            if (state is SessionState.Connected.Direct) {
                 Logger.withTag("ServiceClient")
                     .w { "Connection lost: ${e.message}. Will auto-reconnect..." }
                 val connectionInfo = state.connectionInfo
@@ -436,7 +603,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
 
                 // Enter Reconnecting state (preserves server/user/auth state - no UI reload!)
                 _sessionState.update {
-                    SessionState.Reconnecting(
+                    SessionState.Reconnecting.Direct(
                         attempt = 0,
                         connectionInfo = connectionInfo,
                         serverInfo = serverInfo,
@@ -487,7 +654,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                     val currentConnectionInfo = settings.connectionInfo.value ?: connectionInfo
 
                     _sessionState.update {
-                        SessionState.Reconnecting(
+                        SessionState.Reconnecting.Direct(
                             attempt = reconnectAttempt + 1,
                             connectionInfo = currentConnectionInfo,
                             serverInfo = serverInfo,
@@ -535,12 +702,11 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                     .e { "Error response for command ${request.command}: $response" }
                 if (response.json["error_code"]?.jsonPrimitive?.int == 20) {
                     (_sessionState.value as? SessionState.Connected)?.let { state ->
-                        _sessionState.update {
-                            state.copy(
-                                user = null,
-                                authProcessState = AuthProcessState.NotStarted
-                            )
-                        }
+                        val updatedState = state.update(
+                            user = null,
+                            authProcessState = AuthProcessState.NotStarted
+                        )
+                        _sessionState.value = updatedState
                     }
                 }
             }
@@ -554,7 +720,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
                     return@launch
                 }
             try {
-                state.session.sendSerialized(request)
+                val jsonObject = myJson.encodeToJsonElement(Request.serializer(), request) as JsonObject
+                state.sendMessage(jsonObject)
             } catch (e: Exception) {
                 pendingResponses.remove(request.messageId)
                 continuation.resume(Result.failure(e))
@@ -571,8 +738,14 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope {
     private fun disconnect(newState: SessionState.Disconnected) {
         launch {
             when (val currentState = _sessionState.value) {
-                is SessionState.Connected -> {
+                is SessionState.Connected.Direct -> {
                     currentState.session.close()
+                    _sessionState.update { newState }
+                }
+                is SessionState.Connected.WebRTC -> {
+                    webrtcListeningJob?.cancel()
+                    webrtcListeningJob = null
+                    currentState.manager.disconnect()
                     _sessionState.update { newState }
                 }
                 is SessionState.Reconnecting -> {
