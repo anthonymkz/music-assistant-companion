@@ -347,8 +347,10 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
         webrtcListeningJob?.cancel()
         webrtcListeningJob = launch {
             manager.incomingMessages.collect { jsonString ->
+                Logger.d { "WebRTC received: ${jsonString.take(200)}..." }
                 try {
                     val message = myJson.decodeFromString<JsonObject>(jsonString)
+                    Logger.d { "WebRTC parsed, keys: ${message.keys}" }
                     handleIncomingMessage(message)
                 } catch (e: Exception) {
                     Logger.e(e) { "Failed to parse WebRTC message: $jsonString" }
@@ -361,27 +363,25 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
         username: String,
         password: String,
     ) {
-        var currentState = _sessionState.value
-        if (currentState !is SessionState.Connected) {
+        if (_sessionState.value !is SessionState.Connected) {
             return
         }
-        _sessionState.update { currentState.update(authProcessState = AuthProcessState.InProgress) }
+        _sessionState.update {
+            (it as? SessionState.Connected)?.update(authProcessState = AuthProcessState.InProgress) ?: it
+        }
 
         try {
             val response =
                 sendRequest(Request.Auth.login(username, password, settings.deviceName.value))
-            currentState = _sessionState.value
-            if (currentState !is SessionState.Connected) {
+            if (_sessionState.value !is SessionState.Connected) {
                 return
             }
 
             if (response.isFailure) {
                 _sessionState.update {
-                    currentState.update(
-                        authProcessState = AuthProcessState.Failed(
-                            "No response from server"
-                        )
-                    )
+                    (it as? SessionState.Connected)?.update(
+                        authProcessState = AuthProcessState.Failed("No response from server")
+                    ) ?: it
                 }
                 return
             }
@@ -393,11 +393,9 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                         ?: "Authentication failed"
                 settings.updateToken(null)
                 _sessionState.update {
-                    currentState.update(
-                        authProcessState = AuthProcessState.Failed(
-                            errorMessage
-                        )
-                    )
+                    (it as? SessionState.Connected)?.update(
+                        authProcessState = AuthProcessState.Failed(errorMessage)
+                    ) ?: it
                 }
                 return
             }
@@ -405,55 +403,48 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
             response.resultAs<LoginResponse>()?.let { auth ->
                 if (!auth.success) {
                     _sessionState.update {
-                        currentState.update(
+                        (it as? SessionState.Connected)?.update(
                             authProcessState = AuthProcessState.Failed(
                                 auth.error ?: "Authentication failed"
                             )
-                        )
+                        ) ?: it
                     }
                     return
                 }
                 if (auth.token.isNullOrBlank()) {
                     _sessionState.update {
-                        currentState.update(
-                            authProcessState = AuthProcessState.Failed(
-                                "No token received"
-                            )
-                        )
+                        (it as? SessionState.Connected)?.update(
+                            authProcessState = AuthProcessState.Failed("No token received")
+                        ) ?: it
                     }
                     return
                 }
                 if (auth.user == null) {
                     _sessionState.update {
-                        currentState.update(
-                            authProcessState = AuthProcessState.Failed(
-                                "No user data received"
-                            )
-                        )
+                        (it as? SessionState.Connected)?.update(
+                            authProcessState = AuthProcessState.Failed("No user data received")
+                        ) ?: it
                     }
                     return
                 }
                 authorize(auth.token)
             } ?: run {
                 _sessionState.update {
-                    currentState.update(
-                        authProcessState = AuthProcessState.Failed(
-                            "Failed to parse auth data"
-                        )
-                    )
+                    (it as? SessionState.Connected)?.update(
+                        authProcessState = AuthProcessState.Failed("Failed to parse auth data")
+                    ) ?: it
                 }
             }
         } catch (e: Exception) {
-            val currentState = _sessionState.value
-            if (currentState !is SessionState.Connected) {
+            if (_sessionState.value !is SessionState.Connected) {
                 return
             }
             _sessionState.update {
-                currentState.update(
+                (it as? SessionState.Connected)?.update(
                     authProcessState = AuthProcessState.Failed(
                         e.message ?: "Exception happened: $e"
                     )
-                )
+                ) ?: it
             }
             settings.updateToken(null)
         }
@@ -461,16 +452,15 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
 
     fun logout() {
         settings.updateToken(null)
-        val currentState = _sessionState.value
-        if (currentState !is SessionState.Connected) {
+        if (_sessionState.value !is SessionState.Connected) {
             return
         }
         // Update state synchronously
         _sessionState.update {
-            currentState.update(
+            (it as? SessionState.Connected)?.update(
                 authProcessState = AuthProcessState.LoggedOut,
                 user = null
-            )
+            ) ?: it
         }
         // Fire and forget - send logout to server without waiting for response
         launch {
@@ -484,24 +474,22 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
 
     suspend fun authorize(token: String, isAutoLogin: Boolean = false) {
         try {
-            var currentState = _sessionState.value
-            if (currentState !is SessionState.Connected) {
+            if (_sessionState.value !is SessionState.Connected) {
                 return
             }
-            _sessionState.update { currentState.update(authProcessState = AuthProcessState.InProgress) }
+            _sessionState.update {
+                (it as? SessionState.Connected)?.update(authProcessState = AuthProcessState.InProgress) ?: it
+            }
             val response = sendRequest(Request.Auth.authorize(token, settings.deviceName.value))
-            currentState = _sessionState.value
-            if (currentState !is SessionState.Connected) {
+            if (_sessionState.value !is SessionState.Connected) {
                 return
             }
             if (response.isFailure) {
                 Logger.e(response.exceptionOrNull().toString())
                 _sessionState.update {
-                    currentState.update(
-                        authProcessState = AuthProcessState.Failed(
-                            "No response from server"
-                        )
-                    )
+                    (it as? SessionState.Connected)?.update(
+                        authProcessState = AuthProcessState.Failed("No response from server")
+                    ) ?: it
                 }
                 return
             }
@@ -511,43 +499,38 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                         ?: "Authentication failed"
                 settings.updateToken(null)
                 _sessionState.update {
-                    currentState.update(
-                        authProcessState = AuthProcessState.Failed(
-                            errorMessage
-                        )
-                    )
+                    (it as? SessionState.Connected)?.update(
+                        authProcessState = AuthProcessState.Failed(errorMessage)
+                    ) ?: it
                 }
                 return
             }
             response.resultAs<AuthorizationResponse>()?.user?.let { user ->
                 settings.updateToken(token)
                 _sessionState.update {
-                    currentState.update(
+                    (it as? SessionState.Connected)?.update(
                         authProcessState = AuthProcessState.NotStarted,
                         user = user,
                         wasAutoLogin = isAutoLogin
-                    )
+                    ) ?: it
                 }
             } ?: run {
                 _sessionState.update {
-                    currentState.update(
-                        authProcessState = AuthProcessState.Failed(
-                            "Failed to parse user data"
-                        )
-                    )
+                    (it as? SessionState.Connected)?.update(
+                        authProcessState = AuthProcessState.Failed("Failed to parse user data")
+                    ) ?: it
                 }
             }
         } catch (e: Exception) {
-            val currentState = _sessionState.value
-            if (currentState !is SessionState.Connected) {
+            if (_sessionState.value !is SessionState.Connected) {
                 return
             }
             _sessionState.update {
-                currentState.update(
+                (it as? SessionState.Connected)?.update(
                     authProcessState = AuthProcessState.Failed(
                         e.message ?: "Exception happened: $e"
                     )
-                )
+                ) ?: it
             }
             settings.updateToken(null)
         }
@@ -561,11 +544,10 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
             }
 
             message.containsKey("server_id") -> {
-                val state = _sessionState.value
-                if (state is SessionState.Connected) {
-                    _sessionState.update {
-                        state.update(serverInfo = myJson.decodeFromJsonElement(message))
-                    }
+                _sessionState.update {
+                    (it as? SessionState.Connected)?.update(
+                        serverInfo = myJson.decodeFromJsonElement(message)
+                    ) ?: it
                 }
             }
 
@@ -701,12 +683,11 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                 Logger.withTag("ServiceClient")
                     .e { "Error response for command ${request.command}: $response" }
                 if (response.json["error_code"]?.jsonPrimitive?.int == 20) {
-                    (_sessionState.value as? SessionState.Connected)?.let { state ->
-                        val updatedState = state.update(
+                    _sessionState.update {
+                        (it as? SessionState.Connected)?.update(
                             user = null,
                             authProcessState = AuthProcessState.NotStarted
-                        )
-                        _sessionState.value = updatedState
+                        ) ?: it
                     }
                 }
             }

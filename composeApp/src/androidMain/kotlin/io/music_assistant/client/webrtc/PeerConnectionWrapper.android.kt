@@ -174,7 +174,7 @@ actual class PeerConnectionWrapper actual constructor(
         val pc = peerConnection.get() ?: throw IllegalStateException("Peer connection not initialized")
         logger.d { "Creating data channel: $label" }
 
-        val dataChannel = pc.createDataChannel(label)
+        val dataChannel = pc.createDataChannel(label = label, ordered = true)
             ?: throw IllegalStateException("Failed to create data channel")
 
         return DataChannelWrapper(dataChannel)

@@ -32,6 +32,8 @@ object SignalingMessageSerializer : JsonContentPolymorphicSerializer<SignalingMe
             "ice-candidate" -> SignalingMessage.IceCandidate.serializer()
             "error" -> SignalingMessage.Error.serializer()
             "peer-disconnected" -> SignalingMessage.PeerDisconnected.serializer()
+            "ping" -> SignalingMessage.Ping.serializer()
+            "pong" -> SignalingMessage.Pong.serializer()
             else -> {
                 logger.w { "Received unknown signaling message type: $type (forward compatibility fallback)" }
                 SignalingMessage.Unknown.serializer()

@@ -74,11 +74,13 @@ sealed interface SignalingMessage {
     /**
      * Bidirectional: Client ↔ Signaling Server ↔ Gateway
      * ICE candidate exchange for NAT traversal.
+     * Note: remoteId is only present in outgoing messages (client → gateway).
+     * Gateway responses omit remoteId and only include sessionId.
      */
     @Serializable
     @SerialName("ice-candidate")
     data class IceCandidate(
-        @SerialName("remoteId") val remoteId: String,
+        @SerialName("remoteId") val remoteId: String? = null,
         @SerialName("sessionId") val sessionId: String,
         @SerialName("data") val data: IceCandidateData
     ) : SignalingMessage {
@@ -111,6 +113,28 @@ sealed interface SignalingMessage {
     ) : SignalingMessage {
         @SerialName("type")
         override val type: String = "peer-disconnected"
+    }
+
+    /**
+     * Signaling Server → Client
+     * Keepalive ping. Client must respond with Pong to stay connected.
+     */
+    @Serializable
+    @SerialName("ping")
+    data object Ping : SignalingMessage {
+        @SerialName("type")
+        override val type: String = "ping"
+    }
+
+    /**
+     * Client → Signaling Server
+     * Keepalive pong response.
+     */
+    @Serializable
+    @SerialName("pong")
+    data object Pong : SignalingMessage {
+        @SerialName("type")
+        override val type: String = "pong"
     }
 
     /**

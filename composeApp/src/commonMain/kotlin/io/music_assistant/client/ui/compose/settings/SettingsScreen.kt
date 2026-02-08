@@ -215,6 +215,7 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                         ServerInfoSection(
                             connectionInfo = savedConnectionInfo,
                             serverInfo = connectedState.serverInfo,
+                            isWebRTC = connectedState is SessionState.Connected.WebRTC,
                             onDisconnect = { viewModel.disconnect() }
                         )
 
@@ -520,14 +521,20 @@ private fun ConnectingSection(ipAddress: String, port: String, preferredMethod: 
 private fun ServerInfoSection(
     connectionInfo: ConnectionInfo?,
     serverInfo: ServerInfo?,
+    isWebRTC: Boolean = false,
     onDisconnect: () -> Unit
 ) {
     SectionCard {
         SectionTitle("Server")
 
-        connectionInfo?.let { conn ->
+        val connectionText = if (isWebRTC) {
+            "Connected via WebRTC"
+        } else {
+            connectionInfo?.let { "Connected to ${it.host}:${it.port}" }
+        }
+        connectionText?.let {
             Text(
-                text = "Connected to ${conn.host}:${conn.port}",
+                text = it,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(bottom = 8.dp)

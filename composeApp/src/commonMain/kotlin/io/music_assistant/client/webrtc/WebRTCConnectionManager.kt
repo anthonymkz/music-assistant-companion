@@ -7,6 +7,7 @@ import io.music_assistant.client.webrtc.model.WebRTCConnectionState
 import io.music_assistant.client.webrtc.model.WebRTCError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -72,6 +73,7 @@ class WebRTCConnectionManager(
     private var dataChannel: DataChannelWrapper? = null
     private var messageListenerJob: Job? = null
     private var dataChannelStateJob: Job? = null
+    private var connectionTimeoutJob: Job? = null
     private var currentSessionId: String? = null
     private var currentRemoteId: RemoteId? = null
 
@@ -109,6 +111,9 @@ class WebRTCConnectionManager(
             logger.d { "Sending ConnectRequest message" }
             signalingClient.sendMessage(SignalingMessage.ConnectRequest(remoteId = remoteId.rawId))
 
+            // Step 4: Start timeout timer (30s like web client)
+            startConnectionTimeout()
+
             // Subsequent steps handled in signaling message handlers
 
         } catch (e: Exception) {
@@ -139,11 +144,15 @@ class WebRTCConnectionManager(
     fun send(message: String) {
         val channel = dataChannel
         if (channel == null) {
-            logger.e { "Cannot send: data channel not available" }
+            logger.e { "🔴 SEND FAILED: data channel not available" }
             return
         }
 
+        logger.e { "🔵 SEND REQUEST - Channel: ${channel.label}, State: ${channel.state.value}, Length: ${message.length}" }
+        logger.e { "🔵 SEND CONTENT: ${message.take(300)}" }
+
         channel.send(message)
+        // Note: Timing is now logged in DataChannelWrapper.send()
     }
 
     /**
@@ -175,12 +184,32 @@ class WebRTCConnectionManager(
     }
 
     /**
+     * Start timeout timer for connection. If not connected within 30s, fail.
+     */
+    private fun startConnectionTimeout() {
+        connectionTimeoutJob = scope.launch {
+            delay(30_000) // 30 seconds
+            if (_connectionState.value !is WebRTCConnectionState.Connected) {
+                logger.e { "Connection timeout: failed to establish WebRTC connection within 30s" }
+                _connectionState.value = WebRTCConnectionState.Error(
+                    WebRTCError.ConnectionError("Connection timeout")
+                )
+                cleanup()
+            }
+        }
+    }
+
+    /**
      * Handle Connected: Initialize peer connection and create offer.
      */
     private suspend fun handleConnected(message: SignalingMessage.Connected) {
         logger.i { "Connected. Session ID: ${message.sessionId}, ICE servers: ${message.iceServers.size}" }
         currentSessionId = message.sessionId
         _connectionState.value = WebRTCConnectionState.NegotiatingPeerConnection(message.sessionId ?: "")
+
+        // Cancel timeout - we got the connected message
+        connectionTimeoutJob?.cancel()
+        connectionTimeoutJob = null
 
         try {
             // Create peer connection with callbacks
@@ -198,11 +227,46 @@ class WebRTCConnectionManager(
                     }
                 },
                 onDataChannel = { channel ->
-                    // Server-created data channel (e.g., "sendspin" in the future)
+                    // Server-created data channel
                     logger.i { "Remote data channel received: ${channel.label}" }
+                    // If server creates "ma-api" channel, use it (replaces client-created one)
+                    if (channel.label == "ma-api") {
+                        logger.i { "Server created ma-api channel - using it for communication" }
+                        setupDataChannel(channel, message.sessionId ?: "")
+                    }
                 },
                 onConnectionStateChange = { state ->
                     logger.d { "Peer connection state: $state" }
+                    // Monitor for connection failures
+                    when (state.lowercase()) {
+                        "failed" -> {
+                            logger.e { "ICE connection failed" }
+                            _connectionState.value = WebRTCConnectionState.Error(
+                                WebRTCError.ConnectionError("ICE connection failed")
+                            )
+                            scope.launch { cleanup() }
+                        }
+                        "disconnected" -> {
+                            logger.w { "ICE connection disconnected" }
+                            // Note: "disconnected" can be temporary during network switches
+                            // Only fail if we're not already connected (i.e., first connection attempt)
+                            if (_connectionState.value !is WebRTCConnectionState.Connected) {
+                                _connectionState.value = WebRTCConnectionState.Error(
+                                    WebRTCError.ConnectionError("ICE connection disconnected during setup")
+                                )
+                                scope.launch { cleanup() }
+                            }
+                        }
+                        "closed" -> {
+                            logger.i { "ICE connection closed" }
+                            if (_connectionState.value !is WebRTCConnectionState.Idle) {
+                                _connectionState.value = WebRTCConnectionState.Error(
+                                    WebRTCError.ConnectionError("ICE connection closed")
+                                )
+                                scope.launch { cleanup() }
+                            }
+                        }
+                    }
                 }
             )
 
@@ -318,10 +382,42 @@ class WebRTCConnectionManager(
         }
 
         dataChannel = channel
+
+        var messageNumber = 0
         channel.onMessage { msg ->
-            logger.d { "Received message on data channel: ${msg.take(100)}" }
+            // This callback is invoked by DataChannelWrapper's flow collector
+            val callbackThread = Thread.currentThread().name
+            messageNumber++
+            val timestamp = System.currentTimeMillis()
+
+            logger.e { "🟢 CALLBACK INVOKED #$messageNumber on thread: $callbackThread, timestamp: $timestamp" }
+
+            // Dispatch all processing to coroutine to avoid blocking the callback
             scope.launch {
+                val processingThread = Thread.currentThread().name
+                logger.e { "🟢 RECEIVE #$messageNumber - Length: ${msg.length} chars, processing on thread: $processingThread" }
+                logger.e { "🟢 RECEIVE #$messageNumber - Content: ${msg.take(300)}" }
+
+                try {
+                    val parsed = kotlinx.serialization.json.Json.parseToJsonElement(msg) as? kotlinx.serialization.json.JsonObject
+                    if (parsed != null) {
+                        logger.e { "🟢 RECEIVE #$messageNumber - Parsed keys: ${parsed.keys.joinToString()}" }
+
+                        if (parsed.containsKey("message_id")) {
+                            logger.e { "🟢 RECEIVE #$messageNumber - API RESPONSE with message_id: ${parsed["message_id"]}" }
+                        } else if (parsed.containsKey("event")) {
+                            logger.e { "🟢 RECEIVE #$messageNumber - EVENT: ${parsed["event"]}" }
+                        } else if (parsed.containsKey("server_version")) {
+                            logger.e { "🟢 RECEIVE #$messageNumber - SERVER INFO" }
+                        }
+                    }
+                } catch (e: Exception) {
+                    logger.e { "🟡 RECEIVE #$messageNumber - Could not parse as JSON: ${e.message}" }
+                }
+
+                logger.e { "🔵 Emitting message #$messageNumber to _incomingMessages flow" }
                 _incomingMessages.emit(msg)
+                logger.e { "🟢 Emit #$messageNumber completed" }
             }
         }
 
@@ -356,6 +452,9 @@ class WebRTCConnectionManager(
 
         dataChannelStateJob?.cancel()
         dataChannelStateJob = null
+
+        connectionTimeoutJob?.cancel()
+        connectionTimeoutJob = null
 
         dataChannel?.close()
         dataChannel = null

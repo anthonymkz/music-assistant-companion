@@ -7,7 +7,6 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
-import io.music_assistant.client.utils.myJson
 import io.music_assistant.client.webrtc.model.SignalingMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -22,7 +21,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /**
  * WebSocket state for signaling server connection.
@@ -121,8 +120,24 @@ class SignalingClient(
         }
 
         try {
-            val json = myJson.encodeToString(SignalingMessageSerializer, message)
+            // Serialize using the concrete class serializer
+            // Note: Can't use polymorphic serialization because "type" field conflicts with discriminator
+            // Data objects (Ping/Pong) use hardcoded JSON since kotlinx.serialization doesn't
+            // serialize data object properties (only constructor params, which data objects don't have)
+            val json = when (message) {
+                is SignalingMessage.ConnectRequest -> signalingJson.encodeToString(SignalingMessage.ConnectRequest.serializer(), message)
+                is SignalingMessage.Connected -> signalingJson.encodeToString(SignalingMessage.Connected.serializer(), message)
+                is SignalingMessage.Offer -> signalingJson.encodeToString(SignalingMessage.Offer.serializer(), message)
+                is SignalingMessage.Answer -> signalingJson.encodeToString(SignalingMessage.Answer.serializer(), message)
+                is SignalingMessage.IceCandidate -> signalingJson.encodeToString(SignalingMessage.IceCandidate.serializer(), message)
+                is SignalingMessage.Error -> signalingJson.encodeToString(SignalingMessage.Error.serializer(), message)
+                is SignalingMessage.PeerDisconnected -> signalingJson.encodeToString(SignalingMessage.PeerDisconnected.serializer(), message)
+                SignalingMessage.Ping -> """{"type":"ping"}"""
+                SignalingMessage.Pong -> """{"type":"pong"}"""
+                is SignalingMessage.Unknown -> signalingJson.encodeToString(SignalingMessage.Unknown.serializer(), message)
+            }
             logger.d { "Sending signaling message: ${message.type}" }
+            logger.d { "JSON payload: $json" }
             currentSession.send(Frame.Text(json))
         } catch (e: Exception) {
             logger.e(e) { "Failed to send signaling message" }
@@ -206,8 +221,15 @@ class SignalingClient(
             val text = frame.readText()
             logger.d { "Received signaling message: ${text.take(100)}..." }
 
-            val message = myJson.decodeFromString(SignalingMessageSerializer, text)
+            val message = signalingJson.decodeFromString(SignalingMessageSerializer, text)
             logger.d { "Parsed signaling message type: ${message.type}" }
+
+            // Handle ping at transport level — respond immediately, don't emit to consumers
+            if (message is SignalingMessage.Ping) {
+                logger.d { "Responding to signaling ping with pong" }
+                sendMessage(SignalingMessage.Pong)
+                return
+            }
 
             _incomingMessages.emit(message)
         } catch (e: Exception) {
@@ -220,5 +242,20 @@ class SignalingClient(
          * Default signaling server URL (Music Assistant production server).
          */
         const val DEFAULT_SIGNALING_URL = "wss://signaling.music-assistant.io/ws"
+
+        /**
+         * Json instance configured for signaling message serialization/deserialization.
+         *
+         * NOTE: We can't use standard polymorphic serialization because the protocol's
+         * "type" field conflicts with kotlinx.serialization's class discriminator.
+         *
+         * For deserialization: Uses JsonContentPolymorphicSerializer (type-based routing)
+         * For serialization: Directly serializes concrete class (via message::class.serializer())
+         */
+        private val signalingJson = Json {
+            ignoreUnknownKeys = true
+            isLenient = false
+            encodeDefaults = true
+        }
     }
 }
