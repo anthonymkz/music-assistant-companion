@@ -46,11 +46,18 @@ expect class DataChannelWrapper {
     val state: StateFlow<DataChannelState>
 
     /**
-     * Incoming messages from remote peer.
-     * Flow emits each received message as a String.
+     * Incoming text messages from remote peer.
+     * Flow emits each received text message as a String.
      * Use .catch operator for error handling.
      */
     val messages: Flow<String>
+
+    /**
+     * Incoming binary messages from remote peer.
+     * Flow emits each received binary message as a ByteArray.
+     * Use .catch operator for error handling.
+     */
+    val binaryMessages: Flow<ByteArray>
 
     /**
      * Send text message over the data channel.
@@ -59,6 +66,14 @@ expect class DataChannelWrapper {
      * @param message Text message to send (typically JSON for MA API)
      */
     fun send(message: String)
+
+    /**
+     * Send binary data over the data channel.
+     * Channel must be in "open" state.
+     *
+     * @param data Binary data to send (typically audio chunks for Sendspin)
+     */
+    fun sendBinary(data: ByteArray)
 
     /**
      * Close the data channel.

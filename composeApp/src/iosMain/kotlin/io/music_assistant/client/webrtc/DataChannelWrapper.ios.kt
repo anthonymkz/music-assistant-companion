@@ -29,4 +29,11 @@ actual class DataChannelWrapper {
     actual suspend fun close() {
         // No-op for now
     }
+
+    actual val binaryMessages: Flow<ByteArray>
+        get() = throw NotImplementedError("iOS WebRTC support not yet implemented")
+
+    actual fun sendBinary(data: ByteArray) {
+        throw NotImplementedError("iOS WebRTC support not yet implemented")
+    }
 }

@@ -3,7 +3,7 @@ package io.music_assistant.client.player.sendspin.protocol
 import co.touchlab.kermit.Logger
 import io.music_assistant.client.player.sendspin.ClockSynchronizer
 import io.music_assistant.client.player.sendspin.ProtocolState
-import io.music_assistant.client.player.sendspin.connection.SendspinWsHandler
+import io.music_assistant.client.player.sendspin.transport.SendspinTransport
 import io.music_assistant.client.player.sendspin.model.ClientAuthMessage
 import io.music_assistant.client.player.sendspin.model.ClientCommandMessage
 import io.music_assistant.client.player.sendspin.model.ClientGoodbyeMessage
@@ -53,7 +53,7 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration.Companion.seconds
 
 class MessageDispatcher(
-    private val sendspinWsHandler: SendspinWsHandler,
+    private val transport: SendspinTransport,
     private val clockSynchronizer: ClockSynchronizer,
     private val config: MessageDispatcherConfig
 ) : CoroutineScope {
@@ -112,7 +112,7 @@ class MessageDispatcher(
         messageListenerJob?.cancel()
         messageListenerJob = launch {
             try {
-                sendspinWsHandler.textMessages.collect { text ->
+                transport.textMessages.collect { text ->
                     try {
                         handleTextMessage(text)
                     } catch (e: Exception) {
@@ -220,7 +220,7 @@ class MessageDispatcher(
             clientId = clientCapabilities.clientId
         )
         val json = myJson.encodeToString(message)
-        sendspinWsHandler.sendText(json)
+        transport.sendText(json)
     }
 
     suspend fun sendHello() {
@@ -229,7 +229,7 @@ class MessageDispatcher(
 
         val message = ClientHelloMessage(payload = clientCapabilities)
         val json = myJson.encodeToString(message)
-        sendspinWsHandler.sendText(json)
+        transport.sendText(json)
     }
 
     suspend fun sendTime() {
@@ -238,7 +238,7 @@ class MessageDispatcher(
             payload = ClientTimePayload(clientTransmitted = clientTransmitted)
         )
         val json = myJson.encodeToString(message)
-        sendspinWsHandler.sendText(json)
+        transport.sendText(json)
     }
 
     suspend fun sendState(state: PlayerStateObject) {
@@ -247,7 +247,7 @@ class MessageDispatcher(
         )
         val json = myJson.encodeToString(message)
         logger.d { "Sending client/state: $json" }
-        sendspinWsHandler.sendText(json)
+        transport.sendText(json)
     }
 
     suspend fun sendGoodbye(reason: String) {
@@ -256,7 +256,7 @@ class MessageDispatcher(
             payload = GoodbyePayload(reason = reason)
         )
         val json = myJson.encodeToString(message)
-        sendspinWsHandler.sendText(json)
+        transport.sendText(json)
     }
 
     suspend fun sendCommand(command: String, value: CommandValue?) {
@@ -265,7 +265,7 @@ class MessageDispatcher(
             payload = CommandPayload(command = command, value = value)
         )
         val json = myJson.encodeToString(message)
-        sendspinWsHandler.sendText(json)
+        transport.sendText(json)
     }
 
     // Message handlers
@@ -306,8 +306,8 @@ class MessageDispatcher(
                     sendTime()
                     delay(1.seconds)
                 } catch (_: IllegalStateException) {
-                    // WebSocket not connected, stop clock sync
-                    logger.w { "Clock sync stopped: WebSocket not connected" }
+                    // Transport not connected, stop clock sync
+                    logger.w { "Clock sync stopped: Transport not connected" }
                     break
                 } catch (e: Exception) {
                     logger.e(e) { "Error in clock sync" }

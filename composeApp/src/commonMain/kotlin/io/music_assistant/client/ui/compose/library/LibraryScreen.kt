@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -140,7 +141,7 @@ private fun Library(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
                 // Tab row
-                ScrollableTabRow(
+                SecondaryScrollableTabRow(
                     selectedTabIndex = state.tabs.indexOfFirst { it.isSelected }
                 ) {
                     state.tabs.forEach { tabState ->

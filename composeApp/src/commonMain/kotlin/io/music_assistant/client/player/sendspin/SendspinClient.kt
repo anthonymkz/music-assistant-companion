@@ -4,7 +4,7 @@ import co.touchlab.kermit.Logger
 import io.music_assistant.client.player.MediaPlayerController
 import io.music_assistant.client.player.sendspin.audio.AudioPipeline
 import io.music_assistant.client.player.sendspin.audio.AudioStreamManager
-import io.music_assistant.client.player.sendspin.connection.SendspinWsHandler
+import io.music_assistant.client.player.sendspin.transport.SendspinTransport
 import io.music_assistant.client.player.sendspin.model.CommandValue
 import io.music_assistant.client.player.sendspin.model.PlayerStateObject
 import io.music_assistant.client.player.sendspin.model.PlayerStateValue
@@ -39,7 +39,7 @@ class SendspinClient(
         get() = Dispatchers.Default + supervisorJob
 
     // Components
-    private var sendspinWsHandler: SendspinWsHandler? = null
+    private var transport: SendspinTransport? = null
     private var messageDispatcher: MessageDispatcher? = null
     private var stateReporter: StateReporter? = null
     private var reconnectionCoordinator: ReconnectionCoordinator? = null
@@ -91,8 +91,8 @@ class SendspinClient(
         }
     }
 
-    private suspend fun connectToServer(serverUrl: String) {
-        logger.i { "Connecting to Sendspin server: $serverUrl" }
+    suspend fun connectWithTransport(sendspinTransport: SendspinTransport) {
+        logger.i { "Connecting to Sendspin with transport" }
 
         try {
             // Clean up existing connection
@@ -103,9 +103,8 @@ class SendspinClient(
             currentVolume = mediaPlayerController.getCurrentSystemVolume()
             logger.i { "Initializing with system volume: $currentVolume%" }
 
-            // Create WebSocket handler
-            val wsHandler = SendspinWsHandler(serverUrl)
-            sendspinWsHandler = wsHandler
+            // Store transport
+            transport = sendspinTransport
 
             // Create message dispatcher
             val capabilities = SendspinCapabilities.buildClientHello(config, config.codecPreference)
@@ -116,7 +115,7 @@ class SendspinClient(
                 requiresAuth = config.requiresAuth
             )
             val dispatcher = MessageDispatcher(
-                sendspinWsHandler = wsHandler,
+                transport = sendspinTransport,
                 clockSynchronizer = clockSynchronizer,
                 config = dispatcherConfig
             )
@@ -133,14 +132,14 @@ class SendspinClient(
 
             // Create reconnection coordinator
             val coordinator = ReconnectionCoordinator(
-                wsHandler = wsHandler,
+                transport = sendspinTransport,
                 audioPipeline = audioPipeline,
                 playbackStateProvider = { _playbackState.value }
             )
             reconnectionCoordinator = coordinator
 
-            // Connect WebSocket
-            wsHandler.connect()
+            // Connect transport
+            sendspinTransport.connect()
 
             // Start message dispatcher
             dispatcher.start()
@@ -154,11 +153,108 @@ class SendspinClient(
                 dispatcher.sendHello()
             }
 
-            // Start reconnection coordinator (monitors WebSocket state for recovery)
+            // Start reconnection coordinator (monitors transport state for recovery)
             coordinator.start()
 
-            // Monitor WebSocket connection state (for connection status updates)
-            monitorWebSocketConnectionState()
+            // Monitor transport connection state (for connection status updates)
+            monitorTransportConnectionState()
+
+            // Monitor protocol state
+            monitorProtocolState()
+
+            // Monitor stream events
+            monitorStreamEvents()
+
+            // Monitor binary messages for audio
+            monitorBinaryMessages()
+
+            // Monitor server commands
+            monitorServerCommands()
+
+        } catch (e: Exception) {
+            logger.e(e) { "Failed to connect to server" }
+            _connectionState.update {
+                SendspinConnectionState.Error(
+                    SendspinError.Permanent(
+                        cause = e,
+                        userAction = "Verify server is running and accessible"
+                    )
+                )
+            }
+        }
+    }
+
+    @Deprecated("Use connectWithTransport instead", ReplaceWith("connectWithTransport(WebSocketSendspinTransport(serverUrl))"))
+    private suspend fun connectToServer(serverUrl: String) {
+        // This method is kept for backwards compatibility temporarily
+        // It will be removed once SendspinClientFactory is updated
+        logger.i { "Connecting to Sendspin server: $serverUrl" }
+
+        try {
+            // Clean up existing connection
+            disconnectFromServer()
+
+            // Update current volume from system right before connecting
+            // (in case it changed since construction)
+            currentVolume = mediaPlayerController.getCurrentSystemVolume()
+            logger.i { "Initializing with system volume: $currentVolume%" }
+
+            // Create WebSocket transport
+            val sendspinTransport = io.music_assistant.client.player.sendspin.transport.WebSocketSendspinTransport(serverUrl)
+            transport = sendspinTransport
+
+            // Create message dispatcher
+            val capabilities = SendspinCapabilities.buildClientHello(config, config.codecPreference)
+            val dispatcherConfig = MessageDispatcherConfig(
+                clientCapabilities = capabilities,
+                initialVolume = currentVolume,
+                authToken = config.authToken,
+                requiresAuth = config.requiresAuth
+            )
+            val dispatcher = MessageDispatcher(
+                transport = sendspinTransport,
+                clockSynchronizer = clockSynchronizer,
+                config = dispatcherConfig
+            )
+            messageDispatcher = dispatcher
+
+            // Create state reporter
+            val reporter = StateReporter(
+                messageDispatcher = dispatcher,
+                volumeProvider = { currentVolume },
+                mutedProvider = { currentMuted },
+                playbackStateProvider = { _playbackState.value }
+            )
+            stateReporter = reporter
+
+            // Create reconnection coordinator
+            val coordinator = ReconnectionCoordinator(
+                transport = sendspinTransport,
+                audioPipeline = audioPipeline,
+                playbackStateProvider = { _playbackState.value }
+            )
+            reconnectionCoordinator = coordinator
+
+            // Connect transport
+            sendspinTransport.connect()
+
+            // Start message dispatcher
+            dispatcher.start()
+
+            // Send auth (proxy mode) or hello (direct mode)
+            if (config.requiresAuth) {
+                logger.i { "Using proxy mode - sending auth first" }
+                dispatcher.sendAuth()
+            } else {
+                logger.i { "Using direct mode - sending hello" }
+                dispatcher.sendHello()
+            }
+
+            // Start reconnection coordinator (monitors transport state for recovery)
+            coordinator.start()
+
+            // Monitor transport connection state (for connection status updates)
+            monitorTransportConnectionState()
 
             // Monitor protocol state
             monitorProtocolState()
@@ -186,13 +282,13 @@ class SendspinClient(
     }
 
     /**
-     * Monitor WebSocket state for connection status updates.
+     * Monitor transport state for connection status updates.
      * ReconnectionCoordinator handles recovery logic; this just updates connection state.
      */
-    private fun monitorWebSocketConnectionState() {
+    private fun monitorTransportConnectionState() {
         launch {
-            sendspinWsHandler?.connectionState?.collect { wsState ->
-                logger.d { "WebSocket state: $wsState" }
+            transport?.connectionState?.collect { wsState ->
+                logger.d { "Transport state: $wsState" }
                 when (wsState) {
                     is WebSocketState.Reconnecting -> {
                         _connectionState.update {
@@ -206,7 +302,7 @@ class SendspinClient(
                     }
 
                     is WebSocketState.Error -> {
-                        logger.e { "WebSocket error: ${wsState.error.message}" }
+                        logger.e { "Transport error: ${wsState.error.message}" }
                         val isPermanent = wsState.error.message?.contains("Failed to reconnect") == true
 
                         _connectionState.update {
@@ -229,14 +325,14 @@ class SendspinClient(
                     }
 
                     WebSocketState.Disconnected -> {
-                        logger.i { "WebSocket disconnected" }
+                        logger.i { "Transport disconnected" }
                         _connectionState.update { SendspinConnectionState.Idle }
                     }
 
                     WebSocketState.Connecting,
                     WebSocketState.Connected -> {
                         // Protocol state will update connection state when ready
-                        logger.d { "WebSocket state: $wsState" }
+                        logger.d { "Transport state: $wsState" }
                     }
                 }
             }
@@ -331,7 +427,7 @@ class SendspinClient(
 
     private fun monitorBinaryMessages() {
         launch {
-            sendspinWsHandler?.binaryMessages?.collect { data ->
+            transport?.binaryMessages?.collect { data ->
                 audioPipeline.processBinaryMessage(data)
 
                 // Update playback state based on sync quality
@@ -418,9 +514,9 @@ class SendspinClient(
         messageDispatcher?.close()
         messageDispatcher = null
 
-        sendspinWsHandler?.disconnect()
-        sendspinWsHandler?.close()
-        sendspinWsHandler = null
+        transport?.disconnect()
+        transport?.close()
+        transport = null
 
         clockSynchronizer.reset()
     }

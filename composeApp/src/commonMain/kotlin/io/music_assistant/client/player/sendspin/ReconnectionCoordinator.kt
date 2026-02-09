@@ -2,7 +2,7 @@ package io.music_assistant.client.player.sendspin
 
 import co.touchlab.kermit.Logger
 import io.music_assistant.client.player.sendspin.audio.AudioPipeline
-import io.music_assistant.client.player.sendspin.connection.SendspinWsHandler
+import io.music_assistant.client.player.sendspin.transport.SendspinTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,13 +36,13 @@ sealed class StreamRecoveryState {
 }
 
 /**
- * Coordinates WebSocket reconnection and stream restoration.
+ * Coordinates transport reconnection and stream restoration.
  * Manages recovery state machine and preserves audio buffer during brief disconnects.
  *
  * Separated from SendspinClient to follow Single Responsibility Principle.
  */
 class ReconnectionCoordinator(
-    private val wsHandler: SendspinWsHandler,
+    private val transport: SendspinTransport,
     private val audioPipeline: AudioPipeline,
     private val playbackStateProvider: () -> SendspinPlaybackState
 ) : CoroutineScope {
@@ -59,19 +59,19 @@ class ReconnectionCoordinator(
     private var recoveryTimeoutJob: Job? = null
 
     /**
-     * Start monitoring WebSocket state for reconnection coordination.
+     * Start monitoring transport state for reconnection coordination.
      */
     fun start() {
         logger.i { "Starting reconnection coordinator" }
         launch {
-            wsHandler.connectionState.collect { wsState ->
-                handleWebSocketStateChange(wsState)
+            transport.connectionState.collect { wsState ->
+                handleTransportStateChange(wsState)
             }
         }
     }
 
-    private suspend fun handleWebSocketStateChange(wsState: WebSocketState) {
-        logger.d { "WebSocket state: $wsState, Recovery state: ${_recoveryState.value}" }
+    private suspend fun handleTransportStateChange(wsState: WebSocketState) {
+        logger.d { "Transport state: $wsState, Recovery state: ${_recoveryState.value}" }
 
         when (wsState) {
             is WebSocketState.Reconnecting -> {
@@ -79,11 +79,11 @@ class ReconnectionCoordinator(
                 val isStreaming = isCurrentlyStreaming(currentPlaybackState)
 
                 if (isStreaming) {
-                    logger.i { "🔄 WS RECONNECTING: attempt=${wsState.attempt}, playbackState=$currentPlaybackState, preserving buffer" }
+                    logger.i { "🔄 TRANSPORT RECONNECTING: attempt=${wsState.attempt}, playbackState=$currentPlaybackState, preserving buffer" }
                     // DON'T call stopStream()! AudioPipeline will keep playing from buffer
                     _recoveryState.value = StreamRecoveryState.AwaitingReconnect(wasStreaming = true)
                 } else {
-                    logger.i { "🔄 WS RECONNECTING: attempt=${wsState.attempt}, NOT streaming, nothing to preserve" }
+                    logger.i { "🔄 TRANSPORT RECONNECTING: attempt=${wsState.attempt}, NOT streaming, nothing to preserve" }
                     _recoveryState.value = StreamRecoveryState.AwaitingReconnect(wasStreaming = false)
                 }
             }
@@ -125,13 +125,13 @@ class ReconnectionCoordinator(
                 if (currentState !is StreamRecoveryState.AwaitingReconnect &&
                     currentState !is StreamRecoveryState.RecoveryInProgress
                 ) {
-                    logger.i { "WebSocket disconnected (explicit)" }
+                    logger.i { "Transport disconnected (explicit)" }
                     _recoveryState.value = StreamRecoveryState.Idle
                 }
             }
 
             WebSocketState.Connecting -> {
-                logger.d { "WebSocket connecting..." }
+                logger.d { "Transport connecting..." }
                 // No state change needed
             }
         }
