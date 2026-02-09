@@ -13,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class AuthenticationViewModel(
@@ -22,9 +23,6 @@ class AuthenticationViewModel(
 
     private val _providers = MutableStateFlow<List<AuthProvider>>(emptyList())
     val providers: StateFlow<List<AuthProvider>> = _providers.asStateFlow()
-
-    private val _selectedProvider = MutableStateFlow<AuthProvider?>(null)
-    val selectedProvider: StateFlow<AuthProvider?> = _selectedProvider.asStateFlow()
 
     private var loadProvidersJob: Job? = null
     private var loadingForWebRTC: Boolean? = null
@@ -47,6 +45,7 @@ class AuthenticationViewModel(
                         is AuthProcessState.Failed -> {
                             // Don't reload providers when auth failed
                         }
+
                         else -> {
                             loadProviders()
                         }
@@ -72,6 +71,7 @@ class AuthenticationViewModel(
                                     Logger.d("AuthVM") { "Auth failed - not reloading providers" }
                                     // Don't reload providers when auth failed - keep the error visible
                                 }
+
                                 else -> {
                                     Logger.d("AuthVM") { "Calling loadProviders()" }
                                     loadProviders()
@@ -79,6 +79,7 @@ class AuthenticationViewModel(
                             }
                         }
                     }
+
                     is SessionState.Disconnected -> {
                         // Clear providers when disconnected so next connection loads fresh
                         // This ensures switching between WebRTC (builtin only) and Direct (all providers) works correctly
@@ -86,9 +87,9 @@ class AuthenticationViewModel(
                         loadProvidersJob?.cancel()
                         loadProvidersJob = null
                         loadingForWebRTC = null
-                        _providers.value = emptyList()
-                        _selectedProvider.value = null
+                        _providers.update { emptyList() }
                     }
+
                     else -> {
                         // Connecting, Reconnecting - do nothing
                     }
@@ -131,8 +132,7 @@ class AuthenticationViewModel(
                 type = "builtin",
                 requiresRedirect = false
             )
-            _providers.value = listOf(builtinProvider)
-            _selectedProvider.value = builtinProvider
+            _providers.update { listOf(builtinProvider) }
             // Clear job reference since we're done (synchronous)
             loadProvidersJob = null
             loadingForWebRTC = null
@@ -146,10 +146,7 @@ class AuthenticationViewModel(
                 authManager.getProviders()
                     .onSuccess { providerList ->
                         Logger.d("AuthVM") { "Received ${providerList.size} providers: ${providerList.map { it.id }}" }
-                        _providers.value = providerList
-                        if (_selectedProvider.value == null && providerList.isNotEmpty()) {
-                            _selectedProvider.value = providerList.firstOrNull()
-                        }
+                        _providers.update { providerList }
                     }
                     .onFailure { error ->
                         Logger.e("AuthVM", error) { "Failed to load providers" }
@@ -162,13 +159,8 @@ class AuthenticationViewModel(
         }
     }
 
-    fun selectProvider(provider: AuthProvider) {
-        _selectedProvider.value = provider
-    }
-
-    fun login() {
+    fun login(provider: AuthProvider) {
         viewModelScope.launch {
-            val provider = _selectedProvider.value ?: return@launch
 
             when (provider.type) {
                 "builtin" -> {

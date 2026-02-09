@@ -22,6 +22,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import io.music_assistant.client.auth.AuthState
+import io.music_assistant.client.data.model.server.AuthProvider
 import io.music_assistant.client.data.model.server.User
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -44,7 +46,6 @@ fun AuthenticationPanel(
     user: User?
 ) {
     val providers by viewModel.providers.collectAsStateWithLifecycle()
-    val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
     val authState by viewModel.authState.collectAsStateWithLifecycle()
     var loginError by remember { mutableStateOf<String?>(null) }
 
@@ -75,32 +76,49 @@ fun AuthenticationPanel(
         } ?: run {
             // Show provider selection and auth UI
             if (providers.isNotEmpty()) {
+                var selectedTab by remember(key1 = providers) { mutableIntStateOf(0) }
                 // Provider tabs
                 PrimaryTabRow(
-                    selectedTabIndex = providers.indexOf(selectedProvider)
+                    selectedTabIndex = selectedTab
                 ) {
-                    providers.forEach { provider ->
-                        Tab(
-                            selected = provider == selectedProvider,
-                            onClick = { viewModel.selectProvider(provider) },
-                            text = { Text(provider.id.replaceFirstChar { it.uppercase() }) }
-                        )
+                    providers.forEachIndexed { index, provider ->
+                        when (provider.type) {
+                            "builtin" -> Tab(
+                                selected = index == selectedTab,
+                                onClick = { selectedTab = index },
+                                text = {
+                                    Text("Music Assistant")
+                                }
+                            )
+
+                            "homeassistant" -> Tab(
+                                selected = index == selectedTab,
+                                onClick = { selectedTab = index },
+                                text = {
+                                    Text("Home Assistant")
+                                }
+                            )
+
+                            else -> Unit
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Show provider-specific UI
-                selectedProvider?.let { provider ->
+                providers.getOrNull(selectedTab)?.let { provider ->
                     when (provider.type) {
-                        "builtin" -> BuiltinAuthForm(viewModel)
-                        else -> Button(
+                        "builtin" -> BuiltinAuthForm(viewModel, provider)
+                        "homeassistant" -> Button(
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = { viewModel.login() },
+                            onClick = { viewModel.login(provider) },
                             enabled = authState !is AuthState.Loading
                         ) {
-                            Text("Authorize with ${provider.id.replaceFirstChar { it.uppercase() }}")
+                            Text("Authorize with Home Assistant")
                         }
+
+                        else -> Unit
                     }
                 }
             } else {
@@ -143,7 +161,7 @@ fun AuthenticationPanel(
 }
 
 @Composable
-private fun BuiltinAuthForm(viewModel: AuthenticationViewModel) {
+private fun BuiltinAuthForm(viewModel: AuthenticationViewModel, provider: AuthProvider) {
     val username by viewModel.username.collectAsStateWithLifecycle()
     val password by viewModel.password.collectAsStateWithLifecycle()
     var isPasswordVisible by remember { mutableStateOf(false) }
@@ -193,7 +211,7 @@ private fun BuiltinAuthForm(viewModel: AuthenticationViewModel) {
 
         Button(
             modifier = Modifier.fillMaxWidth(),
-            onClick = { viewModel.login() },
+            onClick = { viewModel.login(provider) },
             enabled = username.isNotEmpty() && password.isNotEmpty()
         ) {
             Text("Login")
