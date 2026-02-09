@@ -36,17 +36,8 @@ sealed class WebRTCError {
     /** Error connecting to or communicating with signaling server */
     data class SignalingError(val message: String, val cause: Throwable? = null) : WebRTCError()
 
-    /** Remote ID not found or invalid */
-    data class RemoteIdNotFound(val remoteId: RemoteId) : WebRTCError()
-
     /** Error during WebRTC peer connection establishment */
     data class PeerConnectionError(val message: String, val cause: Throwable? = null) : WebRTCError()
-
-    /** ICE connection failed (couldn't find path through NAT) */
-    data class IceConnectionFailed(val reason: String) : WebRTCError()
-
-    /** Data channel error */
-    data class DataChannelError(val message: String, val channel: String? = null) : WebRTCError()
 
     /** Generic connection error */
     data class ConnectionError(val message: String, val cause: Throwable? = null) : WebRTCError()

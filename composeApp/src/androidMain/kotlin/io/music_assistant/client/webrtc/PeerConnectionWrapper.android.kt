@@ -5,6 +5,7 @@ import com.shepeliev.webrtckmp.IceCandidate
 import com.shepeliev.webrtckmp.IceServer as RtcIceServer
 import com.shepeliev.webrtckmp.OfferAnswerOptions
 import com.shepeliev.webrtckmp.PeerConnection
+import com.shepeliev.webrtckmp.PeerConnectionState
 import com.shepeliev.webrtckmp.RtcConfiguration
 import com.shepeliev.webrtckmp.SessionDescription
 import com.shepeliev.webrtckmp.SessionDescriptionType
@@ -13,10 +14,18 @@ import com.shepeliev.webrtckmp.onDataChannel
 import com.shepeliev.webrtckmp.onIceCandidate
 import io.music_assistant.client.webrtc.model.IceCandidateData
 import io.music_assistant.client.webrtc.model.IceServer
+import io.music_assistant.client.webrtc.model.PeerConnectionStateValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicReference
 
@@ -26,14 +35,19 @@ import java.util.concurrent.atomic.AtomicReference
  * Uses the com.shepeliev.webrtckmp package which provides suspend function APIs
  * for WebRTC operations.
  */
-actual class PeerConnectionWrapper actual constructor(
-    private val onIceCandidate: (IceCandidateData) -> Unit,
-    private val onDataChannel: (DataChannelWrapper) -> Unit,
-    private val onConnectionStateChange: (state: String) -> Unit
-) {
+actual class PeerConnectionWrapper actual constructor() {
     private val logger = Logger.withTag("PeerConnectionWrapper[Android]")
     private val peerConnection = AtomicReference<PeerConnection?>(null)
     private val eventScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private val _iceCandidates = MutableSharedFlow<IceCandidateData>(extraBufferCapacity = 10)
+    actual val iceCandidates: Flow<IceCandidateData> = _iceCandidates.asSharedFlow()
+
+    private val _dataChannels = MutableSharedFlow<DataChannelWrapper>(extraBufferCapacity = 5)
+    actual val dataChannels: Flow<DataChannelWrapper> = _dataChannels.asSharedFlow()
+
+    private val _connectionState = MutableStateFlow(PeerConnectionStateValue.NEW)
+    actual val connectionState: StateFlow<PeerConnectionStateValue> = _connectionState.asStateFlow()
 
     actual suspend fun initialize(iceServers: List<IceServer>) {
         logger.i { "Initializing peer connection with ${iceServers.size} ICE servers" }
@@ -61,7 +75,7 @@ actual class PeerConnectionWrapper actual constructor(
                 try {
                     pc.onIceCandidate.collect { candidate ->
                         logger.d { "ICE candidate gathered" }
-                        onIceCandidate(
+                        _iceCandidates.emit(
                             IceCandidateData(
                                 candidate = candidate.candidate,
                                 sdpMid = candidate.sdpMid,
@@ -78,7 +92,7 @@ actual class PeerConnectionWrapper actual constructor(
                 try {
                     pc.onDataChannel.collect { channel ->
                         logger.i { "Data channel received: ${channel.label}" }
-                        onDataChannel(DataChannelWrapper(channel))
+                        _dataChannels.emit(DataChannelWrapper(channel))
                     }
                 } catch (e: Exception) {
                     logger.e(e) { "Data channel flow failed" }
@@ -87,18 +101,12 @@ actual class PeerConnectionWrapper actual constructor(
 
             eventScope.launch {
                 try {
-                    pc.onConnectionStateChange.collect { state ->
-                        val stateString = when (state) {
-                            com.shepeliev.webrtckmp.PeerConnectionState.New -> "new"
-                            com.shepeliev.webrtckmp.PeerConnectionState.Connecting -> "connecting"
-                            com.shepeliev.webrtckmp.PeerConnectionState.Connected -> "connected"
-                            com.shepeliev.webrtckmp.PeerConnectionState.Disconnected -> "disconnected"
-                            com.shepeliev.webrtckmp.PeerConnectionState.Failed -> "failed"
-                            com.shepeliev.webrtckmp.PeerConnectionState.Closed -> "closed"
+                    pc.onConnectionStateChange
+                        .map { state -> state.toCommon() }
+                        .collect { state ->
+                            logger.d { "Connection state: $state" }
+                            _connectionState.value = state
                         }
-                        logger.d { "Connection state: $stateString" }
-                        onConnectionStateChange(stateString)
-                    }
                 } catch (e: Exception) {
                     logger.e(e) { "Connection state flow failed" }
                 }
@@ -111,6 +119,18 @@ actual class PeerConnectionWrapper actual constructor(
             peerConnection.set(null)
             throw e
         }
+    }
+
+    /**
+     * Convert platform-specific PeerConnectionState to common enum.
+     */
+    private fun PeerConnectionState.toCommon(): PeerConnectionStateValue = when (this) {
+        PeerConnectionState.New -> PeerConnectionStateValue.NEW
+        PeerConnectionState.Connecting -> PeerConnectionStateValue.CONNECTING
+        PeerConnectionState.Connected -> PeerConnectionStateValue.CONNECTED
+        PeerConnectionState.Disconnected -> PeerConnectionStateValue.DISCONNECTED
+        PeerConnectionState.Failed -> PeerConnectionStateValue.FAILED
+        PeerConnectionState.Closed -> PeerConnectionStateValue.CLOSED
     }
 
     actual suspend fun createOffer(): io.music_assistant.client.webrtc.model.SessionDescription {

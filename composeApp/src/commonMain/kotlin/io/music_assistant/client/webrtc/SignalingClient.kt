@@ -122,8 +122,6 @@ class SignalingClient(
         try {
             // Serialize using the concrete class serializer
             // Note: Can't use polymorphic serialization because "type" field conflicts with discriminator
-            // Data objects (Ping/Pong) use hardcoded JSON since kotlinx.serialization doesn't
-            // serialize data object properties (only constructor params, which data objects don't have)
             val json = when (message) {
                 is SignalingMessage.ConnectRequest -> signalingJson.encodeToString(SignalingMessage.ConnectRequest.serializer(), message)
                 is SignalingMessage.Connected -> signalingJson.encodeToString(SignalingMessage.Connected.serializer(), message)
@@ -132,8 +130,8 @@ class SignalingClient(
                 is SignalingMessage.IceCandidate -> signalingJson.encodeToString(SignalingMessage.IceCandidate.serializer(), message)
                 is SignalingMessage.Error -> signalingJson.encodeToString(SignalingMessage.Error.serializer(), message)
                 is SignalingMessage.PeerDisconnected -> signalingJson.encodeToString(SignalingMessage.PeerDisconnected.serializer(), message)
-                SignalingMessage.Ping -> """{"type":"ping"}"""
-                SignalingMessage.Pong -> """{"type":"pong"}"""
+                is SignalingMessage.Ping -> signalingJson.encodeToString(SignalingMessage.Ping.serializer(), message)
+                is SignalingMessage.Pong -> signalingJson.encodeToString(SignalingMessage.Pong.serializer(), message)
                 is SignalingMessage.Unknown -> signalingJson.encodeToString(SignalingMessage.Unknown.serializer(), message)
             }
             logger.d { "Sending signaling message: ${message.type}" }
@@ -227,7 +225,7 @@ class SignalingClient(
             // Handle ping at transport level — respond immediately, don't emit to consumers
             if (message is SignalingMessage.Ping) {
                 logger.d { "Responding to signaling ping with pong" }
-                sendMessage(SignalingMessage.Pong)
+                sendMessage(SignalingMessage.Pong())
                 return
             }
 

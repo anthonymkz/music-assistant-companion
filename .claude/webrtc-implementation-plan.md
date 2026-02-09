@@ -872,6 +872,79 @@ What's partially implemented:
 
 **Bottom line**: WebRTC is **FULLY FUNCTIONAL** on Android. Users can connect to Music Assistant servers remotely via WebRTC. All API commands work perfectly over encrypted data channels. Authentication, library browsing, playback control - everything works. **Production-ready for Android.**
 
+---
+
+## Refactoring TODO (Code Cleanup Phase)
+
+Now that WebRTC is fully working, time to make it pretty! Current code has comprehensive diagnostic logging that needs cleanup.
+
+### Diagnostic Logs to Remove/Simplify
+
+**Files with verbose debugging:**
+
+1. **DataChannelWrapper.android.kt**
+   - Remove: 💓 HEARTBEAT logging (lines ~115-120)
+   - Remove: Emoji markers (🔵 🟢 🟡 🔴)
+   - Remove: Thread name tracking in every log
+   - Remove: Message numbering (#1, #2, #3)
+   - Remove: Time-since-last-message tracking
+   - **Keep:** Error logging, state transitions, initialization
+   - **Result:** ~150 lines → ~80 lines
+
+2. **WebRTCConnectionManager.kt**
+   - Remove: Message numbering in onMessage callback
+   - Remove: Detailed JSON parsing logs
+   - Remove: Thread tracking logs
+   - Simplify: send() logging to single debug line
+   - **Keep:** State transitions, connection errors, ICE candidates
+   - **Result:** ~400 lines → ~350 lines
+
+3. **Change log level:** ERROR → DEBUG/INFO for remaining diagnostics
+   - All `logger.e { }` used for filtering → change to `logger.d { }` or `logger.i { }`
+   - Keep actual errors as `logger.e { }`
+
+### Code Quality Improvements
+
+**DataChannelWrapper.android.kt:**
+- [ ] Extract `getNativeDataChannel()` to separate file (reusable utility)
+- [ ] Add KDoc comments explaining TEXT vs BINARY workaround
+- [ ] Simplify onMessage flow (remove heartbeat, message counting)
+- [ ] Add unit tests for native DataChannel reflection
+
+**WebRTCConnectionManager.kt:**
+- [ ] Simplify setupDataChannel() - remove verbose logging
+- [ ] Add state transition documentation
+- [ ] Consider extracting signaling message handlers to separate class
+- [ ] Add integration tests for connection flow
+
+**SignalingClient.kt:**
+- [ ] Already clean, minimal changes needed
+- [ ] Maybe add reconnection logic for signaling WebSocket
+
+### Documentation Updates
+
+- [x] Update webrtc-implementation-plan.md with latest status
+- [x] Update MEMORY.md with TEXT/BINARY fix
+- [x] Update dependencies.md
+- [x] Create webrtc-text-binary-workaround.md
+- [ ] Update project.md with WebRTC feature status
+- [ ] Add WebRTC troubleshooting guide
+
+### Testing Before Cleanup
+
+- [ ] Verify current logs show connection works end-to-end
+- [ ] Document what "normal" logs look like (for regression testing)
+- [ ] Save example log output to `.claude/webrtc-example-logs.txt`
+
+### Post-Cleanup Verification
+
+- [ ] Connection still works with simplified logging
+- [ ] Errors still logged appropriately
+- [ ] No performance regression
+- [ ] APK size comparison (diagnostic code removal)
+
+---
+
 ## Architecture Overview
 
 ### Three-Component System

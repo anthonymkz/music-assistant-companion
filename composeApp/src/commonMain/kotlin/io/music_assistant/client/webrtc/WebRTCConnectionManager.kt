@@ -1,6 +1,8 @@
 package io.music_assistant.client.webrtc
 
 import co.touchlab.kermit.Logger
+import com.shepeliev.webrtckmp.DataChannelState
+import io.music_assistant.client.webrtc.model.PeerConnectionStateValue
 import io.music_assistant.client.webrtc.model.RemoteId
 import io.music_assistant.client.webrtc.model.SignalingMessage
 import io.music_assistant.client.webrtc.model.WebRTCConnectionState
@@ -71,13 +73,18 @@ class WebRTCConnectionManager(
 
     private var peerConnection: PeerConnectionWrapper? = null
     private var dataChannel: DataChannelWrapper? = null
+    private var signalingMessageListenerJob: Job? = null
+    private var iceCandidateJob: Job? = null
+    private var dataChannelListenerJob: Job? = null
+    private var connectionStateJob: Job? = null
     private var messageListenerJob: Job? = null
     private var dataChannelStateJob: Job? = null
     private var connectionTimeoutJob: Job? = null
     private var currentSessionId: String? = null
     private var currentRemoteId: RemoteId? = null
 
-    private val _connectionState = MutableStateFlow<WebRTCConnectionState>(WebRTCConnectionState.Idle)
+    private val _connectionState =
+        MutableStateFlow<WebRTCConnectionState>(WebRTCConnectionState.Idle)
     val connectionState: StateFlow<WebRTCConnectionState> = _connectionState.asStateFlow()
 
     private val _incomingMessages = MutableSharedFlow<String>(extraBufferCapacity = 100)
@@ -142,24 +149,18 @@ class WebRTCConnectionManager(
      * @param message JSON string to send
      */
     fun send(message: String) {
-        val channel = dataChannel
-        if (channel == null) {
-            logger.e { "🔴 SEND FAILED: data channel not available" }
-            return
-        }
+        dataChannel?.also { channel ->
+            logger.e { "🔵 SEND REQUEST - Channel: ${channel.label}, State: ${channel.state.value}, Length: ${message.length}" }
+            logger.e { "🔵 SEND CONTENT: ${message.take(300)}" }
+        }?.send(message)
 
-        logger.e { "🔵 SEND REQUEST - Channel: ${channel.label}, State: ${channel.state.value}, Length: ${message.length}" }
-        logger.e { "🔵 SEND CONTENT: ${message.take(300)}" }
-
-        channel.send(message)
-        // Note: Timing is now logged in DataChannelWrapper.send()
     }
 
     /**
      * Listen for incoming signaling messages and handle WebRTC setup.
      */
     private fun startListeningToSignaling() {
-        messageListenerJob = scope.launch {
+        signalingMessageListenerJob = scope.launch {
             signalingClient.incomingMessages.collect { message ->
                 handleSignalingMessage(message)
             }
@@ -205,18 +206,27 @@ class WebRTCConnectionManager(
     private suspend fun handleConnected(message: SignalingMessage.Connected) {
         logger.i { "Connected. Session ID: ${message.sessionId}, ICE servers: ${message.iceServers.size}" }
         currentSessionId = message.sessionId
-        _connectionState.value = WebRTCConnectionState.NegotiatingPeerConnection(message.sessionId ?: "")
+        _connectionState.value =
+            WebRTCConnectionState.NegotiatingPeerConnection(message.sessionId ?: "")
 
         // Cancel timeout - we got the connected message
         connectionTimeoutJob?.cancel()
         connectionTimeoutJob = null
 
         try {
-            // Create peer connection with callbacks
-            val pc = PeerConnectionWrapper(
-                onIceCandidate = { candidate ->
-                    // Send ICE candidate to signaling server
-                    scope.launch {
+            // Create peer connection (no callbacks needed with flow-based API)
+            val pc = PeerConnectionWrapper()
+            peerConnection = pc
+
+            // Initialize with ICE servers
+            pc.initialize(message.iceServers)
+
+            // Set up flow collectors for peer connection events
+            // Collect ICE candidates and send to signaling server
+            iceCandidateJob = scope.launch {
+                try {
+                    pc.iceCandidates.collect { candidate ->
+                        logger.d { "ICE candidate gathered, sending to signaling server" }
                         signalingClient.sendMessage(
                             SignalingMessage.IceCandidate(
                                 remoteId = currentRemoteId!!.rawId,
@@ -225,55 +235,72 @@ class WebRTCConnectionManager(
                             )
                         )
                     }
-                },
-                onDataChannel = { channel ->
-                    // Server-created data channel
-                    logger.i { "Remote data channel received: ${channel.label}" }
-                    // If server creates "ma-api" channel, use it (replaces client-created one)
-                    if (channel.label == "ma-api") {
-                        logger.i { "Server created ma-api channel - using it for communication" }
-                        setupDataChannel(channel, message.sessionId ?: "")
-                    }
-                },
-                onConnectionStateChange = { state ->
-                    logger.d { "Peer connection state: $state" }
-                    // Monitor for connection failures
-                    when (state.lowercase()) {
-                        "failed" -> {
-                            logger.e { "ICE connection failed" }
-                            _connectionState.value = WebRTCConnectionState.Error(
-                                WebRTCError.ConnectionError("ICE connection failed")
-                            )
-                            scope.launch { cleanup() }
-                        }
-                        "disconnected" -> {
-                            logger.w { "ICE connection disconnected" }
-                            // Note: "disconnected" can be temporary during network switches
-                            // Only fail if we're not already connected (i.e., first connection attempt)
-                            if (_connectionState.value !is WebRTCConnectionState.Connected) {
-                                _connectionState.value = WebRTCConnectionState.Error(
-                                    WebRTCError.ConnectionError("ICE connection disconnected during setup")
-                                )
-                                scope.launch { cleanup() }
-                            }
-                        }
-                        "closed" -> {
-                            logger.i { "ICE connection closed" }
-                            if (_connectionState.value !is WebRTCConnectionState.Idle) {
-                                _connectionState.value = WebRTCConnectionState.Error(
-                                    WebRTCError.ConnectionError("ICE connection closed")
-                                )
-                                scope.launch { cleanup() }
-                            }
-                        }
-                    }
+                } catch (e: Exception) {
+                    logger.e(e) { "Error collecting ICE candidates" }
                 }
-            )
+            }
 
-            peerConnection = pc
+            // Monitor data channels from remote peer
+            dataChannelListenerJob = scope.launch {
+                try {
+                    pc.dataChannels.collect { channel ->
+                        logger.i { "Remote data channel received: ${channel.label}" }
+                        // If server creates "ma-api" channel, use it (replaces client-created one)
+                        if (channel.label == "ma-api") {
+                            logger.i { "Server created ma-api channel - using it for communication" }
+                            setupDataChannel(channel, message.sessionId ?: "")
+                        }
+                    }
+                } catch (e: Exception) {
+                    logger.e(e) { "Error collecting data channels" }
+                }
+            }
 
-            // Initialize with ICE servers
-            pc.initialize(message.iceServers)
+            // Monitor connection state for failures
+            connectionStateJob = scope.launch {
+                try {
+                    pc.connectionState.collect { state ->
+                        logger.d { "Peer connection state: $state" }
+                        when (state) {
+                            PeerConnectionStateValue.FAILED -> {
+                                logger.e { "ICE connection failed" }
+                                _connectionState.value = WebRTCConnectionState.Error(
+                                    WebRTCError.ConnectionError("ICE connection failed")
+                                )
+                                cleanup()
+                            }
+
+                            PeerConnectionStateValue.DISCONNECTED -> {
+                                logger.w { "ICE connection disconnected" }
+                                // Note: "disconnected" can be temporary during network switches
+                                // Only fail if we're not already connected (i.e., first connection attempt)
+                                if (_connectionState.value !is WebRTCConnectionState.Connected) {
+                                    _connectionState.value = WebRTCConnectionState.Error(
+                                        WebRTCError.ConnectionError("ICE connection disconnected during setup")
+                                    )
+                                    cleanup()
+                                }
+                            }
+
+                            PeerConnectionStateValue.CLOSED -> {
+                                logger.i { "ICE connection closed" }
+                                if (_connectionState.value !is WebRTCConnectionState.Idle) {
+                                    _connectionState.value = WebRTCConnectionState.Error(
+                                        WebRTCError.ConnectionError("ICE connection closed")
+                                    )
+                                    cleanup()
+                                }
+                            }
+
+                            else -> {
+                                // Normal states (NEW, CONNECTING, CONNECTED)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    logger.e(e) { "Error collecting connection state" }
+                }
+            }
 
             // Create data channel BEFORE offer (required: adds m=application to SDP)
             logger.d { "Creating ma-api data channel" }
@@ -294,7 +321,8 @@ class WebRTCConnectionManager(
                 )
             )
 
-            _connectionState.value = WebRTCConnectionState.GatheringIceCandidates(message.sessionId ?: "")
+            _connectionState.value =
+                WebRTCConnectionState.GatheringIceCandidates(message.sessionId ?: "")
 
         } catch (e: Exception) {
             logger.e(e) { "Failed to initialize peer connection" }
@@ -334,17 +362,14 @@ class WebRTCConnectionManager(
      */
     private suspend fun handleIceCandidate(message: SignalingMessage.IceCandidate) {
         logger.d { "Received ICE candidate" }
-        val pc = peerConnection
-
-        if (pc == null) {
+        peerConnection?.let {
+            try {
+                it.addIceCandidate(message.data)
+            } catch (e: Exception) {
+                logger.e(e) { "Failed to add ICE candidate" }
+            }
+        } ?: run {
             logger.e { "Received ICE candidate but no peer connection exists" }
-            return
-        }
-
-        try {
-            pc.addIceCandidate(message.data)
-        } catch (e: Exception) {
-            logger.e(e) { "Failed to add ICE candidate" }
         }
     }
 
@@ -363,7 +388,7 @@ class WebRTCConnectionManager(
      * Handle peer disconnected notification.
      */
     private fun handlePeerDisconnected(message: SignalingMessage.PeerDisconnected) {
-        logger.i { "Remote peer disconnected: ${message.sessionId}" }
+        logger.w { "Remote peer disconnected: ${message.sessionId}" }
         _connectionState.value = WebRTCConnectionState.Error(
             WebRTCError.ConnectionError("Remote peer disconnected")
         )
@@ -375,6 +400,7 @@ class WebRTCConnectionManager(
      */
     private fun setupDataChannel(channel: DataChannelWrapper, sessionId: String) {
         // Cleanup previous channel if exists (reconnection edge case)
+        messageListenerJob?.cancel()
         dataChannelStateJob?.cancel()
         val oldChannel = dataChannel
         if (oldChannel != null) {
@@ -383,62 +409,30 @@ class WebRTCConnectionManager(
 
         dataChannel = channel
 
-        var messageNumber = 0
-        channel.onMessage { msg ->
-            // This callback is invoked by DataChannelWrapper's flow collector
-            val callbackThread = Thread.currentThread().name
-            messageNumber++
-            val timestamp = System.currentTimeMillis()
-
-            logger.e { "🟢 CALLBACK INVOKED #$messageNumber on thread: $callbackThread, timestamp: $timestamp" }
-
-            // Dispatch all processing to coroutine to avoid blocking the callback
-            scope.launch {
-                val processingThread = Thread.currentThread().name
-                logger.e { "🟢 RECEIVE #$messageNumber - Length: ${msg.length} chars, processing on thread: $processingThread" }
-                logger.e { "🟢 RECEIVE #$messageNumber - Content: ${msg.take(300)}" }
-
-                try {
-                    val parsed = kotlinx.serialization.json.Json.parseToJsonElement(msg) as? kotlinx.serialization.json.JsonObject
-                    if (parsed != null) {
-                        logger.e { "🟢 RECEIVE #$messageNumber - Parsed keys: ${parsed.keys.joinToString()}" }
-
-                        if (parsed.containsKey("message_id")) {
-                            logger.e { "🟢 RECEIVE #$messageNumber - API RESPONSE with message_id: ${parsed["message_id"]}" }
-                        } else if (parsed.containsKey("event")) {
-                            logger.e { "🟢 RECEIVE #$messageNumber - EVENT: ${parsed["event"]}" }
-                        } else if (parsed.containsKey("server_version")) {
-                            logger.e { "🟢 RECEIVE #$messageNumber - SERVER INFO" }
-                        }
-                    }
-                } catch (e: Exception) {
-                    logger.e { "🟡 RECEIVE #$messageNumber - Could not parse as JSON: ${e.message}" }
+        // Collect incoming messages from the flow
+        messageListenerJob = scope.launch {
+            try {
+                channel.messages.collect { msg ->
+                    _incomingMessages.emit(msg)
                 }
-
-                logger.e { "🔵 Emitting message #$messageNumber to _incomingMessages flow" }
-                _incomingMessages.emit(msg)
-                logger.e { "🟢 Emit #$messageNumber completed" }
+            } catch (e: Exception) {
+                logger.e(e) { "Error receiving messages from data channel" }
             }
         }
 
-        // Check initial state (may already be open)
-        if (channel.state.value == "open") {
-            logger.d { "Data channel already open" }
-            _connectionState.value = WebRTCConnectionState.Connected(
-                sessionId = sessionId,
-                remoteId = currentRemoteId!!
-            )
-        }
-
-        // Monitor future state changes
+        // Monitor state changes
         dataChannelStateJob = scope.launch {
-            channel.state.collect { state ->
-                if (state == "open") {
-                    _connectionState.value = WebRTCConnectionState.Connected(
-                        sessionId = sessionId,
-                        remoteId = currentRemoteId!!
-                    )
+            try {
+                channel.state.collect { state ->
+                    if (state == DataChannelState.Open) {
+                        _connectionState.value = WebRTCConnectionState.Connected(
+                            sessionId = sessionId,
+                            remoteId = currentRemoteId!!
+                        )
+                    }
                 }
+            } catch (e: Exception) {
+                logger.e(e) { "Error monitoring data channel state" }
             }
         }
     }
@@ -447,6 +441,18 @@ class WebRTCConnectionManager(
      * Cleanup resources.
      */
     private suspend fun cleanup() {
+        signalingMessageListenerJob?.cancel()
+        signalingMessageListenerJob = null
+
+        iceCandidateJob?.cancel()
+        iceCandidateJob = null
+
+        dataChannelListenerJob?.cancel()
+        dataChannelListenerJob = null
+
+        connectionStateJob?.cancel()
+        connectionStateJob = null
+
         messageListenerJob?.cancel()
         messageListenerJob = null
 

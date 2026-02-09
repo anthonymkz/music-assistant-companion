@@ -1,8 +1,11 @@
 package io.music_assistant.client.webrtc
 
+import com.shepeliev.webrtckmp.DataChannelState
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * iOS implementation of DataChannelWrapper.
@@ -10,18 +13,16 @@ import kotlinx.coroutines.flow.asStateFlow
  * TODO: Implement using webrtc-kmp iOS support
  */
 actual class DataChannelWrapper {
-    private val _state = MutableStateFlow("closed")
+    private val _state = MutableStateFlow(DataChannelState.Closed)
 
     actual val label: String
         get() = throw NotImplementedError("iOS WebRTC support not yet implemented")
 
-    actual val state: StateFlow<String> = _state.asStateFlow()
+    actual val state: StateFlow<DataChannelState> = _state.asStateFlow()
+
+    actual val messages: Flow<String> = emptyFlow()
 
     actual fun send(message: String) {
-        throw NotImplementedError("iOS WebRTC support not yet implemented")
-    }
-
-    actual fun onMessage(callback: (String) -> Unit) {
         throw NotImplementedError("iOS WebRTC support not yet implemented")
     }
 

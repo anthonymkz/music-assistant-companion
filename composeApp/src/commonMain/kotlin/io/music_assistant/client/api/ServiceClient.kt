@@ -5,7 +5,6 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.receiveDeserialized
-import io.ktor.client.plugins.websocket.sendSerialized
 import io.ktor.client.plugins.websocket.ws
 import io.ktor.client.plugins.websocket.wss
 import io.ktor.http.HttpMethod
@@ -21,15 +20,10 @@ import io.music_assistant.client.utils.connectionInfo
 import io.music_assistant.client.utils.myJson
 import io.music_assistant.client.utils.resultAs
 import io.music_assistant.client.utils.sendMessage
-import io.music_assistant.client.utils.session
 import io.music_assistant.client.utils.update
 import io.music_assistant.client.webrtc.SignalingClient
 import io.music_assistant.client.webrtc.WebRTCConnectionManager
 import io.music_assistant.client.webrtc.model.RemoteId
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
-import org.koin.core.parameter.parametersOf
-import org.koin.core.qualifier.named
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -47,6 +41,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
+import org.koin.core.qualifier.named
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -77,48 +74,51 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
 
     init {
         launch {
-            _sessionState.collect {
-                when (it) {
+            _sessionState.collect { state ->
+                when (state) {
                     is SessionState.Connected -> {
-                        it.connectionInfo?.let { connInfo -> settings.updateConnectionInfo(connInfo) }
+                        state.connectionInfo?.let { connInfo -> settings.updateConnectionInfo(connInfo) }
                     }
 
                     is SessionState.Reconnecting -> {
                         // Keep connection info during reconnection (no UI reload)
-                        it.connectionInfo?.let { connInfo -> settings.updateConnectionInfo(connInfo) }
+                        state.connectionInfo?.let { connInfo -> settings.updateConnectionInfo(connInfo) }
                     }
 
                     is SessionState.Disconnected -> {
                         listeningJob?.cancel()
                         listeningJob = null
-                        when (it) {
+                        when (state) {
                             SessionState.Disconnected.ByUser,
                             SessionState.Disconnected.NoServerData,
                             is SessionState.Disconnected.Error -> Unit
 
                             SessionState.Disconnected.Initial -> {
-                                // Autoconnect based on last successful connection mode
+                                // Auto-connect based on last successful connection mode
                                 when (settings.lastConnectionMode.value) {
                                     "webrtc" -> {
                                         val remoteIdStr = settings.webrtcRemoteId.value
-                                        val remoteId = remoteIdStr.takeIf { it.isNotBlank() }?.let {
-                                            RemoteId.parse(it)
-                                        }
+                                        val remoteId = remoteIdStr
+                                            .takeIf { s -> s.isNotBlank() }
+                                            ?.let { s -> RemoteId.parse(s) }
                                         if (remoteId != null) {
                                             connectWebRTC(remoteId)
                                         } else {
-                                            // WebRTC selected but no valid remoteId - don't autoconnect
+                                            // WebRTC selected but no valid remoteId - don't auto-connect
                                             _sessionState.update { SessionState.Disconnected.NoServerData }
                                         }
                                     }
+
                                     "direct", null -> {
                                         // Default to Direct for existing users (null) or explicit "direct"
                                         settings.connectionInfo.value?.let { connectionInfo ->
                                             connect(connectionInfo)
-                                        } ?: _sessionState.update { SessionState.Disconnected.NoServerData }
+                                        }
+                                            ?: _sessionState.update { SessionState.Disconnected.NoServerData }
                                     }
+
                                     else -> {
-                                        // Unknown mode - no autoconnect
+                                        // Unknown mode - no auto-connect
                                         _sessionState.update { SessionState.Disconnected.NoServerData }
                                     }
                                 }
@@ -211,7 +211,12 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                                 connection.port,
                                 "/ws",
                             ) {
-                                _sessionState.update { SessionState.Connected.Direct(this, connection) }
+                                _sessionState.update {
+                                    SessionState.Connected.Direct(
+                                        this,
+                                        connection
+                                    )
+                                }
                                 settings.setLastConnectionMode("direct")
                                 listenForMessages()
                             }
@@ -222,7 +227,12 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                                 connection.port,
                                 "/ws",
                             ) {
-                                _sessionState.update { SessionState.Connected.Direct(this, connection) }
+                                _sessionState.update {
+                                    SessionState.Connected.Direct(
+                                        this,
+                                        connection
+                                    )
+                                }
                                 settings.setLastConnectionMode("direct")
                                 listenForMessages()
                             }
@@ -268,10 +278,12 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                                         startWebRTCMessageListener(manager)
                                         settings.setLastConnectionMode("webrtc")
                                     }
+
                                     is io.music_assistant.client.webrtc.model.WebRTCConnectionState.Error -> {
                                         Logger.withTag("ServiceClient")
                                             .w { "WebRTC reconnect failed: ${state.error}" }
                                     }
+
                                     else -> {}
                                 }
                             }
@@ -285,7 +297,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
 
             is SessionState.Reconnecting.Direct -> {
                 // User switched modes during reconnection - not supported
-                Logger.withTag("ServiceClient").w { "Cannot switch to WebRTC during Direct reconnection" }
+                Logger.withTag("ServiceClient")
+                    .w { "Cannot switch to WebRTC during Direct reconnection" }
                 return
             }
 
@@ -310,6 +323,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                                         startWebRTCMessageListener(manager)
                                         settings.setLastConnectionMode("webrtc")
                                     }
+
                                     is io.music_assistant.client.webrtc.model.WebRTCConnectionState.Error -> {
                                         _sessionState.update {
                                             SessionState.Disconnected.Error(
@@ -317,6 +331,7 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                                             )
                                         }
                                     }
+
                                     else -> {}
                                 }
                             }
@@ -367,7 +382,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
             return
         }
         _sessionState.update {
-            (it as? SessionState.Connected)?.update(authProcessState = AuthProcessState.InProgress) ?: it
+            (it as? SessionState.Connected)?.update(authProcessState = AuthProcessState.InProgress)
+                ?: it
         }
 
         try {
@@ -478,7 +494,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                 return
             }
             _sessionState.update {
-                (it as? SessionState.Connected)?.update(authProcessState = AuthProcessState.InProgress) ?: it
+                (it as? SessionState.Connected)?.update(authProcessState = AuthProcessState.InProgress)
+                    ?: it
             }
             val response = sendRequest(Request.Auth.authorize(token, settings.deviceName.value))
             if (_sessionState.value !is SessionState.Connected) {
@@ -649,7 +666,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                     reconnectAttempt++
 
                     // Trigger connection attempt (async)
-                    Logger.withTag("ServiceClient").i { "Attempting reconnection to ${currentConnectionInfo.host}:${currentConnectionInfo.port}..." }
+                    Logger.withTag("ServiceClient")
+                        .i { "Attempting reconnection to ${currentConnectionInfo.host}:${currentConnectionInfo.port}..." }
                     connect(currentConnectionInfo)
 
                     // Wait a bit for connection to establish (or fail)
@@ -701,7 +719,8 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                     return@launch
                 }
             try {
-                val jsonObject = myJson.encodeToJsonElement(Request.serializer(), request) as JsonObject
+                val jsonObject =
+                    myJson.encodeToJsonElement(Request.serializer(), request) as JsonObject
                 state.sendMessage(jsonObject)
             } catch (e: Exception) {
                 pendingResponses.remove(request.messageId)
@@ -723,16 +742,19 @@ class ServiceClient(private val settings: SettingsRepository) : CoroutineScope, 
                     currentState.session.close()
                     _sessionState.update { newState }
                 }
+
                 is SessionState.Connected.WebRTC -> {
                     webrtcListeningJob?.cancel()
                     webrtcListeningJob = null
                     currentState.manager.disconnect()
                     _sessionState.update { newState }
                 }
+
                 is SessionState.Reconnecting -> {
                     // Already disconnected, just update state
                     _sessionState.update { newState }
                 }
+
                 else -> {
                     // Already disconnected or in some other state
                     _sessionState.update { newState }

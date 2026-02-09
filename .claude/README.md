@@ -2,7 +2,7 @@
 
 This directory contains project documentation for the Music Assistant KMP Client.
 
-**Last Updated:** 2026-01-16
+**Last Updated:** 2026-02-08
 
 ## Quick Navigation
 
@@ -10,7 +10,7 @@ This directory contains project documentation for the Music Assistant KMP Client
 |----------|-----------|
 | **Architecture** | [architecture.md](#architecture), [project-structure.md](#project-structure) |
 | **Development** | [guidelines.md](#guidelines), [dependencies.md](#dependencies) |
-| **Features** | [Sendspin](#sendspin-protocol), [Settings](#settings-screen), [iOS Audio](#ios-audio-pipeline), [Volume Control](#volume-control) |
+| **Features** | [WebRTC Remote Access](#webrtc-remote-access), [Sendspin](#sendspin-protocol), [Settings](#settings-screen), [iOS Audio](#ios-audio-pipeline), [Volume Control](#volume-control) |
 | **Getting Started** | [project.md](#project-overview) |
 
 ---
@@ -64,6 +64,19 @@ This directory contains project documentation for the Music Assistant KMP Client
 ---
 
 ## Feature Documentation
+
+### WebRTC Remote Access
+
+**[webrtc-implementation-plan.md](webrtc-implementation-plan.md)** ⭐ **COMPLETE - PRODUCTION READY**
+- **Status**: ✅ Fully functional on Android (updated 2026-02-08)
+- WebRTC peer-to-peer connections for remote access
+- Cloud signaling server integration (`wss://signaling.music-assistant.io/ws`)
+- DTLS-encrypted data channels for secure communication
+- Full API compatibility (authentication, library, playback)
+- **Critical fix**: TEXT message transmission via native API (webrtc-kmp limitation workaround)
+- Implementation phases: Foundation → Signaling → Peer Connection → Integration → Testing
+- Known issues: iOS stubs only (Android production-ready), optional Sendspin channel not implemented
+- Architecture decisions and production-quality fixes documented
 
 ### Sendspin Protocol
 

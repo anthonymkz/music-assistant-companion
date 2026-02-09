@@ -1,5 +1,7 @@
 package io.music_assistant.client.webrtc
 
+import com.shepeliev.webrtckmp.DataChannelState
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -10,24 +12,24 @@ import kotlinx.coroutines.flow.StateFlow
  * through the encrypted WebRTC peer connection.
  *
  * Channel States:
- * - "connecting" - Channel is being established
- * - "open" - Channel is ready, can send/receive
- * - "closing" - Channel is shutting down
- * - "closed" - Channel is closed
+ * - DataChannelState.Connecting - Channel is being established
+ * - DataChannelState.Open - Channel is ready, can send/receive
+ * - DataChannelState.Closing - Channel is shutting down
+ * - DataChannelState.Closed - Channel is closed
  *
  * Usage:
  * ```kotlin
  * // Wait for channel to open
  * dataChannel.state.collect { state ->
- *     if (state == "open") {
+ *     if (state == DataChannelState.Open) {
  *         dataChannel.send("""{"type":"command","data":{...}}""")
  *     }
  * }
  *
- * // Receive messages
- * dataChannel.onMessage { message ->
- *     println("Received: $message")
- * }
+ * // Receive messages (with error handling)
+ * dataChannel.messages
+ *     .catch { e -> logger.error(e) { "Error receiving messages" } }
+ *     .collect { message -> println("Received: $message") }
  * ```
  */
 expect class DataChannelWrapper {
@@ -39,9 +41,16 @@ expect class DataChannelWrapper {
 
     /**
      * Current state of the data channel.
-     * Values: "connecting", "open", "closing", "closed"
+     * Values: DataChannelState.Connecting, Open, Closing, Closed
      */
-    val state: StateFlow<String>
+    val state: StateFlow<DataChannelState>
+
+    /**
+     * Incoming messages from remote peer.
+     * Flow emits each received message as a String.
+     * Use .catch operator for error handling.
+     */
+    val messages: Flow<String>
 
     /**
      * Send text message over the data channel.
@@ -50,14 +59,6 @@ expect class DataChannelWrapper {
      * @param message Text message to send (typically JSON for MA API)
      */
     fun send(message: String)
-
-    /**
-     * Register callback for incoming messages.
-     * Called when remote peer sends data over this channel.
-     *
-     * @param callback Function to handle received messages
-     */
-    fun onMessage(callback: (String) -> Unit)
 
     /**
      * Close the data channel.

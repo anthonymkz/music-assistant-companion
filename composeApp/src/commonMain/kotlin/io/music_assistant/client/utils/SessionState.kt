@@ -1,7 +1,6 @@
 package io.music_assistant.client.utils
 
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
-import io.ktor.client.plugins.websocket.receiveDeserialized
 import io.ktor.client.plugins.websocket.sendSerialized
 import io.music_assistant.client.api.ConnectionInfo
 import io.music_assistant.client.data.model.server.ServerInfo
@@ -194,22 +193,6 @@ suspend fun SessionState.Connected.sendMessage(message: JsonObject) {
         is SessionState.Connected.WebRTC -> {
             val json = myJson.encodeToString(JsonObject.serializer(), message)
             manager.send(json)
-        }
-    }
-}
-
-/**
- * Receive a JSON message from the appropriate transport (WebSocket or WebRTC).
- * For Direct: blocks until message received from WebSocket
- * For WebRTC: Not used - messages come via Flow
- */
-suspend fun SessionState.Connected.receiveMessage(): JsonObject {
-    return when (this) {
-        is SessionState.Connected.Direct -> {
-            session.receiveDeserialized()
-        }
-        is SessionState.Connected.WebRTC -> {
-            throw UnsupportedOperationException("WebRTC uses Flow-based message receiving")
         }
     }
 }

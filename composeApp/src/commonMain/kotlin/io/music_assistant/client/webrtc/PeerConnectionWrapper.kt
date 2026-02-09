@@ -2,7 +2,10 @@ package io.music_assistant.client.webrtc
 
 import io.music_assistant.client.webrtc.model.IceCandidateData
 import io.music_assistant.client.webrtc.model.IceServer
+import io.music_assistant.client.webrtc.model.PeerConnectionStateValue
 import io.music_assistant.client.webrtc.model.SessionDescription
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Platform-specific WebRTC peer connection wrapper.
@@ -12,21 +15,55 @@ import io.music_assistant.client.webrtc.model.SessionDescription
  * while delegating to platform-specific WebRTC implementations.
  *
  * Lifecycle:
- * 1. Create instance with callbacks
+ * 1. Create instance (no callbacks needed)
  * 2. Call initialize(iceServers) to set up connection
- * 3. Call createOffer() to generate SDP offer
- * 4. Exchange offer/answer via signaling
- * 5. Call setRemoteAnswer() with server's SDP answer
- * 6. As ICE candidates arrive, call addIceCandidate()
- * 7. Server creates data channel → onDataChannel callback fires
- * 8. Connection established
- * 9. Call close() when done
+ * 3. Collect flows for events (iceCandidates, dataChannels, connectionState)
+ * 4. Call createOffer() to generate SDP offer
+ * 5. Exchange offer/answer via signaling
+ * 6. Call setRemoteAnswer() with server's SDP answer
+ * 7. ICE candidates arrive via iceCandidates flow
+ * 8. Server creates data channel → emitted via dataChannels flow
+ * 9. Connection state changes → tracked via connectionState flow
+ * 10. Call close() when done
+ *
+ * Example:
+ * ```kotlin
+ * val pc = PeerConnectionWrapper()
+ * pc.initialize(iceServers)
+ *
+ * // Collect events
+ * launch { pc.iceCandidates.collect { candidate -> sendToSignaling(candidate) } }
+ * launch { pc.dataChannels.collect { channel -> setupChannel(channel) } }
+ * launch {
+ *     pc.connectionState.collect { state ->
+ *         when (state) {
+ *             PeerConnectionStateValue.FAILED -> handleError()
+ *             PeerConnectionStateValue.CONNECTED -> handleSuccess()
+ *             else -> {}
+ *         }
+ *     }
+ * }
+ * ```
  */
-expect class PeerConnectionWrapper(
-    onIceCandidate: (IceCandidateData) -> Unit,
-    onDataChannel: (DataChannelWrapper) -> Unit,
-    onConnectionStateChange: (state: String) -> Unit
-) {
+expect class PeerConnectionWrapper() {
+    /**
+     * Flow of ICE candidates discovered during connection establishment.
+     * Emit each candidate to the remote peer via signaling.
+     */
+    val iceCandidates: Flow<IceCandidateData>
+
+    /**
+     * Flow of data channels created by remote peer.
+     * Emits when the remote peer creates a data channel.
+     */
+    val dataChannels: Flow<DataChannelWrapper>
+
+    /**
+     * Current connection state.
+     * Use to monitor connection progress and detect failures.
+     */
+    val connectionState: StateFlow<PeerConnectionStateValue>
+
     /**
      * Initialize peer connection with ICE servers from signaling server.
      * Must be called before createOffer().

@@ -2,7 +2,6 @@ package io.music_assistant.client.webrtc.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 
 /**
  * Messages exchanged with the WebRTC signaling server.
@@ -121,10 +120,10 @@ sealed interface SignalingMessage {
      */
     @Serializable
     @SerialName("ping")
-    data object Ping : SignalingMessage {
+    data class Ping(
         @SerialName("type")
         override val type: String = "ping"
-    }
+    ) : SignalingMessage
 
     /**
      * Client → Signaling Server
@@ -132,10 +131,10 @@ sealed interface SignalingMessage {
      */
     @Serializable
     @SerialName("pong")
-    data object Pong : SignalingMessage {
+    data class Pong(
         @SerialName("type")
         override val type: String = "pong"
-    }
+    ) : SignalingMessage
 
     /**
      * Unknown message type (forward compatibility).
@@ -156,9 +155,7 @@ data class IceServer(
     @SerialName("urls") val urls: List<String>,
     @SerialName("username") val username: String? = null,
     @SerialName("credential") val credential: String? = null
-) {
-    constructor(url: String) : this(urls = listOf(url))
-}
+)
 
 /**
  * Session Description Protocol (SDP) for WebRTC offer/answer.
