@@ -91,8 +91,8 @@ class AutoLibrary(
                         rootTabItem("Artists", MediaIds.TAB_ARTISTS),
                         rootTabItem("Albums", MediaIds.TAB_ALBUMS),
                         rootTabItem("Playlists", MediaIds.TAB_PLAYLISTS),
-                                rootTabItem("Podcasts", MediaIds.TAB_PODCASTS),
-                    rootTabItem("Radio", MediaIds.TAB_RADIO)
+                        rootTabItem("Podcasts", MediaIds.TAB_PODCASTS),
+                        rootTabItem("Radio", MediaIds.TAB_RADIO)
                     )
                 )
             }
@@ -100,113 +100,42 @@ class AutoLibrary(
             MediaIds.TAB_ARTISTS -> {
                 result.detach()
                 scope.launch {
-                    // Block until authenticated, then proceed.
-                    apiClient.sessionState
-                        .mapNotNull { it as? SessionState.Connected }
-                        .mapNotNull { it.dataConnectionState as? DataConnectionState.Authenticated }
-                        .first()
-                    result.sendResult(
-                        apiClient.sendRequest(Request.Artist.listLibrary())
-                            .resultAs<List<ServerMediaItem>>()
-                            ?.toAppMediaItemList()
-                            ?.map {
-                                it.toAutoMediaItem(
-                                    baseUrl,
-                                    true,
-                                    defaultIconUri
-                                )
-                            })
+                    waitForCorrectState()
+                    result.sendResult(loadItems(Request.Artist.listLibrary()))
                 }
             }
 
             MediaIds.TAB_ALBUMS -> {
                 result.detach()
                 scope.launch {
-                    // Block until authenticated, then proceed.
-                    apiClient.sessionState
-                        .mapNotNull { it as? SessionState.Connected }
-                        .mapNotNull { it.dataConnectionState as? DataConnectionState.Authenticated }
-                        .first()
-                    result.sendResult(
-                        apiClient.sendRequest(Request.Album.listLibrary())
-                            .resultAs<List<ServerMediaItem>>()
-                            ?.toAppMediaItemList()
-                            ?.map {
-                                it.toAutoMediaItem(
-                                    baseUrl,
-                                    true,
-                                    defaultIconUri
-                                )
-                            })
+                    waitForCorrectState()
+                    result.sendResult(loadItems(Request.Album.listLibrary()))
                 }
             }
 
             MediaIds.TAB_PLAYLISTS -> {
                 result.detach()
                 scope.launch {
-                    // Block until authenticated, then proceed.
-                    apiClient.sessionState
-                        .mapNotNull { it as? SessionState.Connected }
-                        .mapNotNull { it.dataConnectionState as? DataConnectionState.Authenticated }
-                        .first()
-                    result.sendResult(
-                        apiClient.sendRequest(Request.Playlist.listLibrary())
-                            .resultAs<List<ServerMediaItem>>()
-                            ?.toAppMediaItemList()
-                            ?.map {
-                                it.toAutoMediaItem(
-                                    baseUrl,
-                                    true,
-                                    defaultIconUri
-                                )
-                            })
+                    waitForCorrectState()
+                    result.sendResult(loadItems(Request.Playlist.listLibrary()))
                 }
             }
 
             MediaIds.TAB_PODCASTS -> {
                 result.detach()
                 scope.launch {
-                    // Block until authenticated, then proceed.
-                    apiClient.sessionState
-                        .mapNotNull { it as? SessionState.Connected }
-                        .mapNotNull { it.dataConnectionState as? DataConnectionState.Authenticated }
-                        .first()
-                    result.sendResult(
-                        apiClient.sendRequest(Request.Podcast.listLibrary())
-                            .resultAs<List<ServerMediaItem>>()
-                            ?.toAppMediaItemList()
-                            ?.map {
-                                it.toAutoMediaItem(
-                                    baseUrl,
-                                    true,
-                                    defaultIconUri
-                                )
-                            })
+                    waitForCorrectState()
+                    result.sendResult(loadItems(Request.Podcast.listLibrary()))
                 }
             }
 
             MediaIds.TAB_RADIO -> {
                 result.detach()
                 scope.launch {
-                    // Block until authenticated, then proceed.
-                    apiClient.sessionState
-                        .mapNotNull { it as? SessionState.Connected }
-                        .mapNotNull { it.dataConnectionState as? DataConnectionState.Authenticated }
-                        .first()
-                    result.sendResult(
-                        apiClient.sendRequest(Request.RadioStation.listLibrary())
-                            .resultAs<List<ServerMediaItem>>()
-                            ?.toAppMediaItemList()
-                            ?.map {
-                                it.toAutoMediaItem(
-                                    baseUrl,
-                                    true,
-                                    defaultIconUri
-                                )
-                            })
+                    waitForCorrectState()
+                    result.sendResult(loadItems(Request.RadioStation.listLibrary()))
                 }
             }
-
 
 
             else -> {
@@ -228,20 +157,33 @@ class AutoLibrary(
                     }
                 }
                 scope.launch {
-                    val list = apiClient.sendRequest(requestAndCategory)
-                        .resultAs<List<ServerMediaItem>>()
-                        ?.toAppMediaItemList()?.map {
-                            it.toAutoMediaItem(
-                                baseUrl,
-                                true,
-                                defaultIconUri
-                            )
-                        }
+                    val list = loadItems(requestAndCategory)
                     result.sendResult(list?.let { actionsForItem(id) + it })
                 }
             }
         }
     }
+
+    private suspend fun waitForCorrectState() {
+        // Block until authenticated, then proceed.
+        apiClient.sessionState
+            .mapNotNull { it as? SessionState.Connected }
+            .mapNotNull { it.dataConnectionState as? DataConnectionState.Authenticated }
+            .first()
+    }
+
+    private suspend fun loadItems(request: Request): List<MediaItem>? =
+        apiClient.sendRequest(request)
+            .resultAs<List<ServerMediaItem>>()
+            ?.toAppMediaItemList()
+            ?.sortedBy { item -> item.favorite != true }
+            ?.map {
+                it.toAutoMediaItem(
+                    baseUrl,
+                    true,
+                    defaultIconUri
+                )
+            }
 
     private val baseUrl: String?
         get() = (apiClient.sessionState.value as? SessionState.Connected)?.serverInfo?.baseUrl
@@ -387,7 +329,7 @@ fun AppMediaItem.toMediaDescription(
 ): MediaDescriptionCompat {
     return MediaDescriptionCompat.Builder()
         .setMediaId("${itemId}__${uri}__${mediaType}__${provider}")
-        .setTitle(name)
+        .setTitle((if (favorite == true) "\u2665 " else "") + name)
         .setSubtitle(subtitle)
         .setMediaUri(uri?.let { Uri.parse(it) })
         .setIconUri(imageInfo?.url(serverUrl)?.let { Uri.parse(it) } ?: defaultIconUri)
