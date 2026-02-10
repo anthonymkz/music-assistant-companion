@@ -123,6 +123,10 @@ android {
     }
 
     buildToolsVersion = "36.0.0"
+
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
 }
 
 dependencies {

@@ -75,7 +75,7 @@ class MediaSessionHelper(
                         PlaybackStateCompat.CustomAction.Builder(
                             "ACTION_SWITCH_PLAYER",
                             "Next player",
-                            R.drawable.baseline_next_plan_24
+                            R.drawable.ic_speaker
                         ).build()
                     )
                 } else {

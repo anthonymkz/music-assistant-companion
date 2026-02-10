@@ -3,8 +3,8 @@ package io.music_assistant.client.settings
 import com.russhwolf.settings.Settings
 import io.music_assistant.client.api.ConnectionInfo
 import io.music_assistant.client.player.sendspin.audio.Codec
+import io.music_assistant.client.player.sendspin.audio.Codecs
 import io.music_assistant.client.ui.theme.ThemeSetting
-import io.music_assistant.client.utils.Codecs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -130,7 +130,7 @@ class SettingsRepository(
         Codec.valueOf(
             settings.getString(
                 "sendspin_codec_preference",
-                (Codecs.list.getOrNull(0) ?: Codec.PCM).name
+                (Codecs.list.getOrNull(0) ?: Codecs.default).name
             ).uppercase()
         )
     )

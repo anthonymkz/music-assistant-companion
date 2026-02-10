@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,7 +33,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.capitalize
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -121,6 +125,7 @@ private fun SearchContent(
     libraryActions: ActionsViewModel.LibraryActions,
     providerIconFetcher: (@Composable (Modifier, String) -> Unit),
 ) {
+    val focusManager = LocalFocusManager.current
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -133,14 +138,13 @@ private fun SearchContent(
                     modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
                     value = state.searchState.query,
                     onValueChange = onQueryChanged,
-                    label = {
-                        Text(
-                            text = if (state.searchState.query.trim().length < 3)
-                                "Type at least 3 characters to search"
-                            else
-                                "Search query"
-                        )
-                    },
+                    maxLines = 1,
+                    label = { Text(if (state.searchState.query.trim().length < 3) "Type at least 3 characters to search" else "Search query") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        onQueryChanged(state.searchState.query)
+                        focusManager.clearFocus()
+                    })
                 )
             }
 
@@ -292,7 +296,13 @@ private fun SearchContent(
                                         item = radio,
                                         serverUrl = serverUrl,
                                         onTrackPlayOption = onTrackClick,
-                                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                                        onItemClick = {
+                                            (it as? AppMediaItem)?.let { i ->
+                                                onItemClick(
+                                                    i
+                                                )
+                                            }
+                                        },
                                         playlistActions = playlistActions,
                                         libraryActions = libraryActions,
                                         providerIconFetcher = providerIconFetcher,

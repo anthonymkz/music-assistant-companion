@@ -15,8 +15,6 @@ import io.music_assistant.client.data.model.server.Metadata
 import io.music_assistant.client.data.model.server.ProviderMapping
 import io.music_assistant.client.data.model.server.SearchResult
 import io.music_assistant.client.data.model.server.ServerMediaItem
-import io.music_assistant.client.utils.formatDuration
-import kotlin.time.DurationUnit
 
 interface PlayableItem {
     val defaultIcon: ImageVector

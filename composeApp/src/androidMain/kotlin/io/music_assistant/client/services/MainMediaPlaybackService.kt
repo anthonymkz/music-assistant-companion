@@ -30,7 +30,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.stateIn
@@ -100,12 +102,16 @@ class MainMediaPlaybackService : MediaBrowserServiceCompat() {
             mediaNotificationData.debounce(200).collect { updatePlaybackState(it) }
         }
         scope.launch {
-            dataSource.doesAnythingHavePlayableItem.collect {
-                if (!it) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                }
-            }
+            // Block until everything is stopped, then bail
+            dataSource.doesAnythingHavePlayableItem.filter { !it }.first()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+        scope.launch {
+            // Update notification with currently selected player, if it's in the list.
+            dataSource.selectedPlayerIndex.mapNotNull { dataSource.selectedPlayer }
+                .mapNotNull { p -> players.value.indexOf(p).takeIf { it >= 0 } }
+                .collect { newIndex -> activePlayerIndex.update { newIndex } }
         }
         registerNotificationDismissReceiver()
     }
