@@ -2,6 +2,7 @@ package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -13,10 +14,15 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.ShuffleOn
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import compose.icons.FontAwesomeIcons
@@ -25,7 +31,6 @@ import compose.icons.fontawesomeicons.solid.VolumeDown
 import compose.icons.fontawesomeicons.solid.VolumeUp
 import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.data.model.server.RepeatMode
-import io.music_assistant.client.ui.compose.common.ActionButton
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
 
 @Composable
@@ -136,5 +141,29 @@ fun PlayerControls(
                 enabled = enabled,
             ) { playerAction(playerData, PlayerAction.VolumeUp) }
         }
+    }
+}
+
+@Composable
+private fun ActionButton(
+    icon: ImageVector,
+    size: Dp = 24.dp,
+    tint: Color = MaterialTheme.colorScheme.primary,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    IconButton(
+        modifier = Modifier
+            .alpha(if (enabled) 1F else 0.5f)
+            .size(size),
+        onClick = onClick,
+        enabled = enabled,
+    ) {
+        Icon(
+            modifier = Modifier.size(size),
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+        )
     }
 }

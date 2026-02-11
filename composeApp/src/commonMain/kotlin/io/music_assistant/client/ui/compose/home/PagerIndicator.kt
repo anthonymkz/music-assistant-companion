@@ -1,4 +1,4 @@
-package io.music_assistant.client.ui.compose.common
+package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween

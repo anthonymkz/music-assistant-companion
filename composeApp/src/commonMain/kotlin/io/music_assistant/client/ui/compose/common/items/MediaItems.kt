@@ -44,9 +44,9 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import io.music_assistant.client.data.model.client.AppMediaItem
 import io.music_assistant.client.data.model.client.PlayableItem
-import io.music_assistant.client.ui.compose.common.painters.VinylRecordPainter
-import io.music_assistant.client.ui.compose.common.painters.WaveformPainter
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
+import io.music_assistant.client.ui.compose.common.painters.rememberVinylRecordPainter
+import io.music_assistant.client.ui.compose.common.painters.rememberWaveformPainter
 
 /**
  * Track media item with waveform overlay.
@@ -133,12 +133,7 @@ fun TrackImage(
         )
 
         // Draw waveform overlay at the bottom
-        val waveformPainter = remember(onPrimaryContainer) {
-            WaveformPainter(
-                waveColor = primary,
-                thickness = 3f
-            )
-        }
+        val waveformPainter = rememberWaveformPainter(primary)
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
@@ -301,13 +296,10 @@ fun AlbumImage(
             .size(itemSize)
             .clip(RoundedCornerShape(8.dp))
     ) {
-        val vinylRecord = remember(primaryContainer, background) {
-            VinylRecordPainter(
-                recordColor = Color.DarkGray,
-                labelColor = primaryContainer,
-                holeColor = background
-            )
-        }
+        val vinylRecord = rememberVinylRecordPainter(
+            backgroundColor = background,
+            labelColor = primaryContainer,
+        )
         val stripWidth = 10.dp
         val holeRadius = 16.dp
 

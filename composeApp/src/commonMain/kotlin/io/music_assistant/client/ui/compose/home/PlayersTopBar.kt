@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.music_assistant.client.data.model.client.PlayerData
-import io.music_assistant.client.ui.compose.common.HorizontalPagerIndicator
 import io.music_assistant.client.ui.compose.common.OverflowMenu
 import io.music_assistant.client.ui.compose.common.OverflowMenuOption
 
@@ -71,7 +70,8 @@ fun PlayersTopBar(
             options = playerDataList.map { data ->
                 val isLocalPlayer = data.playerId == playersState.localPlayerId
                 OverflowMenuOption(
-                    title = data.player.displayName + (if (isLocalPlayer) " (local)" else "")
+                    title = data.player.displayName + (if (isLocalPlayer) " (local)" else ""),
+                    icon = Icons.Filled.Speaker,
                 ) {
                     onMoveToPlayer(data.player.id)
                 }

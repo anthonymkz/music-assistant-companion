@@ -1,5 +1,7 @@
 package io.music_assistant.client.ui.compose.common.painters
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -101,4 +103,16 @@ class VinylRecordPainter(
             emptyList()
         }
     }
+}
+
+@Composable
+fun rememberVinylRecordPainter(
+    labelColor: Color,
+    backgroundColor: Color,
+) = remember(backgroundColor, labelColor) {
+    VinylRecordPainter(
+        recordColor = Color.DarkGray,
+        labelColor = labelColor,
+        holeColor = backgroundColor
+    )
 }

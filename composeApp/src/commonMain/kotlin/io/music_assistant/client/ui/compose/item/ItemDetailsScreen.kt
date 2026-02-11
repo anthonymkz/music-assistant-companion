@@ -21,8 +21,13 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.AddToQueue
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistAddCircle
+import androidx.compose.material.icons.filled.QueuePlayNext
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +50,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import compose.icons.TablerIcons
+import compose.icons.tablericons.FolderMinus
+import compose.icons.tablericons.FolderPlus
+import compose.icons.tablericons.Heart
+import compose.icons.tablericons.HeartBroken
 import io.music_assistant.client.data.model.client.AppMediaItem
 import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.MediaType
@@ -384,34 +394,70 @@ private fun HeaderSection(
                         )
                     },
                     options = buildList {
-                        add(OverflowMenuOption("Add and play") { onPlayClick(QueueOption.PLAY, false) })
-                        add(OverflowMenuOption("Add and play next") { onPlayClick(QueueOption.NEXT, false) })
-                        add(OverflowMenuOption("Add to bottom") { onPlayClick(QueueOption.ADD, false) })
-                        if(item.canStartRadio) {
-                            add(OverflowMenuOption("Start radio") { onPlayClick(QueueOption.REPLACE, true) })
+                        add(
+                            OverflowMenuOption(
+                                title = "Insert next and play",
+                                icon = Icons.Default.PlaylistAddCircle
+                            ) { onPlayClick(QueueOption.PLAY, false) })
+                        add(
+                            OverflowMenuOption(
+                                title = "Insert next",
+                                icon = Icons.Default.QueuePlayNext
+                            ) {
+                                onPlayClick(QueueOption.NEXT, false)
+                            })
+                        add(
+                            OverflowMenuOption(
+                                title = "Add to bottom",
+                                icon = Icons.Default.AddToQueue
+                            ) {
+                                onPlayClick(
+                                    QueueOption.ADD, false
+                                )
+                            })
+                        if (item.canStartRadio) {
+                            add(
+                                OverflowMenuOption(
+                                    title = "Start radio",
+                                    icon = Icons.Default.Radio
+                                ) {
+                                    onPlayClick(QueueOption.REPLACE, true)
+                                })
                         }
                         add(
                             OverflowMenuOption(
-                                if (item.isInLibrary) "Remove from library"
-                                else "Add to library"
+                                title =
+                                    if (item.isInLibrary) "Remove from library"
+                                    else "Add to library",
+                                icon =
+                                    if (item.isInLibrary) TablerIcons.FolderMinus
+                                    else TablerIcons.FolderPlus
                             ) { libraryActions.onLibraryClick(item) })
                         if (item.isInLibrary) {
                             add(
                                 OverflowMenuOption(
-                                    if (item.favorite == true) "Unfavorite"
-                                    else "Favorite"
+                                    title =
+                                        if (item.favorite == true) "Unfavorite"
+                                        else "Favorite",
+                                    icon =
+                                        if (item.favorite == true) TablerIcons.HeartBroken
+                                        else TablerIcons.Heart
                                 ) { libraryActions.onFavoriteClick(item) })
                         }
                         playlistActions?.let {
-                            add(OverflowMenuOption("Add to Playlist") {
-                                showPlaylistDialog = true
-                                // Load playlists when dialog opens
-                                coroutineScope.launch {
-                                    isLoadingPlaylists = true
-                                    playlists = it.onLoadPlaylists()
-                                    isLoadingPlaylists = false
-                                }
-                            })
+                            add(
+                                OverflowMenuOption(
+                                    title = "Add to Playlist",
+                                    icon = Icons.AutoMirrored.Filled.PlaylistAdd
+                                ) {
+                                    showPlaylistDialog = true
+                                    // Load playlists when dialog opens
+                                    coroutineScope.launch {
+                                        isLoadingPlaylists = true
+                                        playlists = it.onLoadPlaylists()
+                                        isLoadingPlaylists = false
+                                    }
+                                })
                         }
                     }
                 )
