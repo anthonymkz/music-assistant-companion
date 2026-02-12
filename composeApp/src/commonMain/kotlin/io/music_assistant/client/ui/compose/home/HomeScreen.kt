@@ -11,12 +11,18 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
+import io.music_assistant.client.ui.compose.common.action.PlayerAction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -36,6 +42,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +51,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,7 +82,10 @@ import io.music_assistant.client.ui.compose.library.LibraryScreen
 import io.music_assistant.client.ui.compose.nav.BackHandler
 import io.music_assistant.client.ui.compose.nav.NavScreen
 import io.music_assistant.client.ui.compose.search.SearchScreen
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 import io.music_assistant.client.utils.SessionState
+import io.music_assistant.client.utils.conditional
 import kotlinx.coroutines.flow.collectLatest
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.mass
@@ -96,8 +113,14 @@ fun HomeScreen(
         }
     }
 
+    val isTV = LocalPlatformType.current == PlatformType.TV
+
     var showPlayersView by remember { mutableStateOf(false) }
     var isQueueExpanded by remember { mutableStateOf(false) }
+
+    // Focus requesters for TV quick-navigation
+    val miniPlayerFocusRequester = remember { FocusRequester() }
+    val railFocusRequester = remember { FocusRequester() }
 
     val recommendationsState = viewModel.recommendationsState.collectAsStateWithLifecycle()
     val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
@@ -111,6 +134,19 @@ fun HomeScreen(
 
     // Nested navigation backstack - hoisted to survive player view transitions
     val homeBackStack = rememberHomeNavBackStack()
+
+    // TV rail: derive which destination is selected from the back stack
+    @Suppress("UNCHECKED_CAST")
+    val currentRailDestination by remember(homeBackStack) {
+        derivedStateOf {
+            when (homeBackStack.last()) {
+                is HomeNavScreen.Library -> TvNavDestination.Library
+                is HomeNavScreen.Search -> TvNavDestination.Search
+                is HomeNavScreen.Landing -> TvNavDestination.Home
+                else -> TvNavDestination.Home // ItemDetails keeps current context
+            }
+        }
+    }
 
     // Handle back when player view is shown
     BackHandler(enabled = showPlayersView) {
@@ -127,43 +163,87 @@ fun HomeScreen(
     }
 
     Scaffold(
+        modifier = Modifier.conditional(isTV, ifTrue = {
+            onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) {
+                    when (event.key) {
+                        Key.Menu -> {
+                            if (!showPlayersView) {
+                                try {
+                                    railFocusRequester.requestFocus()
+                                } catch (_: Exception) {
+                                }
+                            }
+                            true
+                        }
+
+                        Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
+                            data?.playerData?.getOrNull(playerPagerState.currentPage)
+                                ?.player?.id?.let {
+                                    viewModel.playerAction(it, PlayerAction.TogglePlayPause)
+                                }
+                            true
+                        }
+
+                        Key.MediaNext -> {
+                            data?.playerData?.getOrNull(playerPagerState.currentPage)
+                                ?.player?.id?.let {
+                                    viewModel.playerAction(it, PlayerAction.Next)
+                                }
+                            true
+                        }
+
+                        Key.MediaPrevious -> {
+                            data?.playerData?.getOrNull(playerPagerState.currentPage)
+                                ?.player?.id?.let {
+                                    viewModel.playerAction(it, PlayerAction.Previous)
+                                }
+                            true
+                        }
+
+                        else -> false
+                    }
+                } else false
+            }
+        }),
         topBar = {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(8.dp).statusBarsPadding(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            if (!isTV) {
+                // Phone top bar — TV uses the navigation rail instead
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 2.dp
                 ) {
-                    Image(
-                        painter = painterResource(Res.drawable.mass),
-                        contentDescription = "Music Assistant Logo",
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Text(
-                        text = "MASS",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Icon(
-                        modifier = Modifier
-                            .padding(end = 16.dp)
-                            .size(24.dp)
-                            .clickable {
-                                navigateTo(NavScreen.Settings)
-                            },
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Settings",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(
+                        modifier = Modifier.padding(8.dp).statusBarsPadding(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(Res.drawable.mass),
+                            contentDescription = "Music Assistant Logo",
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Text(
+                            text = "MASS",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 2.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        IconButton(
+                            onClick = { navigateTo(NavScreen.Settings) }
+                        ) {
+                            Icon(
+                                modifier = Modifier.size(24.dp),
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -171,129 +251,212 @@ fun HomeScreen(
         val connectionState = recommendationsState.value.connectionState
         val dataState = recommendationsState.value.recommendations
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-            // Simple slide transition between main screen and big player
-            AnimatedContent(
-                targetState = showPlayersView,
-                transitionSpec = {
-                    slideInVertically(
-                        initialOffsetY = { if (targetState) it else -it },
-                        animationSpec = tween(300)
-                    ) togetherWith slideOutVertically(
-                        targetOffsetY = { if (targetState) -it else it },
-                        animationSpec = tween(300)
-                    )
-                },
-                label = "player_transition"
-            ) { isPlayersViewShown ->
-                if (!isPlayersViewShown) {
-                    Column(
+            if (isTV) {
+                // TV: if/else to prevent focus leak between home and expanded player.
+                if (!showPlayersView) {
+                    // Main layout: left navigation rail + content + mini player
+                    Row(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background)
                     ) {
-                        HomeContent(
-                            modifier = Modifier.weight(1f),
-                            homeBackStack = homeBackStack,
-                            connectionState = connectionState,
-                            dataState = dataState,
-                            serverUrl = serverUrl,
-                            onRecommendationItemClick = viewModel::onRecommendationItemClicked,
-                            onTrackPlayOption = viewModel::onTrackPlayOption,
-                            playlistActions = ActionsViewModel.PlaylistActions(
-                                onLoadPlaylists = actionsViewModel::getEditablePlaylists,
-                                onAddToPlaylist = actionsViewModel::addToPlaylist
-                            ),
-                            libraryActions = ActionsViewModel.LibraryActions(
-                                onLibraryClick = actionsViewModel::onLibraryClick,
-                                onFavoriteClick = actionsViewModel::onFavoriteClick
-                            ),
-                            providerIconFetcher = { modifier, provider ->
-                                actionsViewModel.getProviderIcon(provider)
-                                    ?.let { ProviderIcon(modifier, it) }
-                            }
-                        )
+                        @Suppress("UNCHECKED_CAST")
+                        val typedBackStack =
+                            homeBackStack as NavBackStack<HomeNavScreen>
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .wrapContentHeight()
-                                .defaultMinSize(minHeight = 100.dp)
-                                .clickable { showPlayersView = true }
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            when (val state = playersState) {
-                                is HomeScreenViewModel.PlayersState.Loading -> Text(
-                                    text = "Loading players...",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                        TvNavigationRail(
+                            selectedDestination = currentRailDestination,
+                            onDestinationSelected = { destination ->
+                                when (destination) {
+                                    TvNavDestination.Home -> {
+                                        // Pop back to Landing
+                                        while (typedBackStack.last() !is HomeNavScreen.Landing) {
+                                            typedBackStack.removeLastOrNull() ?: break
+                                        }
+                                    }
 
-                                is HomeScreenViewModel.PlayersState.Data -> {
-                                    if (state.playerData.isEmpty()) {
-                                        Text(
-                                            text = "No players available",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    } else {
-                                        PlayersPager(
-                                            modifier = Modifier.fillMaxWidth().wrapContentHeight(),
-                                            playerPagerState = playerPagerState,
-                                            playersState = state,
-                                            serverUrl = serverUrl,
-                                            simplePlayerAction = { playerId, action ->
-                                                viewModel.playerAction(playerId, action)
-                                            },
-                                            playerAction = { playerData, action ->
-                                                viewModel.playerAction(playerData, action)
-                                            },
-                                            onPlayersRefreshClick = viewModel::refreshPlayers,
-                                            onFavoriteClick = actionsViewModel::onFavoriteClick,
-                                            showQueue = false,
-                                            isQueueExpanded = isQueueExpanded,
-                                            onQueueExpandedSwitch = {
-                                                isQueueExpanded = !isQueueExpanded
-                                            },
-                                            onGoToLibrary = { showPlayersView = false },
-                                            onItemMoved = null,
-                                            queueAction = { action -> viewModel.queueAction(action) },
-                                            settingsAction = viewModel::openPlayerSettings,
-                                            dspSettingsAction = viewModel::openPlayerDspSettings,
-                                        )
+                                    TvNavDestination.Library -> {
+                                        typedBackStack.add(HomeNavScreen.Library(type = null))
+                                    }
+
+                                    TvNavDestination.Search -> {
+                                        typedBackStack.add(HomeNavScreen.Search)
+                                    }
+
+                                    TvNavDestination.NowPlaying -> {
+                                        showPlayersView = true
+                                    }
+
+                                    TvNavDestination.Settings -> {
+                                        navigateTo(NavScreen.Settings)
                                     }
                                 }
+                            },
+                            railFocusRequester = railFocusRequester,
+                            modifier = Modifier.fillMaxHeight(),
+                        )
 
-                                else -> Text(
-                                    text = "No players available",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                        ) {
+                            HomeContent(
+                                modifier = Modifier.weight(1f),
+                                homeBackStack = homeBackStack,
+                                connectionState = connectionState,
+                                dataState = dataState,
+                                serverUrl = serverUrl,
+                                onRecommendationItemClick = viewModel::onRecommendationItemClicked,
+                                onTrackPlayOption = viewModel::onTrackPlayOption,
+                                playlistActions = ActionsViewModel.PlaylistActions(
+                                    onLoadPlaylists = actionsViewModel::getEditablePlaylists,
+                                    onAddToPlaylist = actionsViewModel::addToPlaylist
+                                ),
+                                libraryActions = ActionsViewModel.LibraryActions(
+                                    onLibraryClick = actionsViewModel::onLibraryClick,
+                                    onFavoriteClick = actionsViewModel::onFavoriteClick
+                                ),
+                                providerIconFetcher = { modifier, provider ->
+                                    actionsViewModel.getProviderIcon(provider)
+                                        ?.let { ProviderIcon(modifier, it) }
+                                }
+                            )
+
+                            // Mini player area
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .wrapContentHeight()
+                                    .defaultMinSize(minHeight = 100.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                when (val state = playersState) {
+                                    is HomeScreenViewModel.PlayersState.Loading -> Text(
+                                        text = "Loading players...",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+
+                                    is HomeScreenViewModel.PlayersState.Data -> {
+                                        if (state.playerData.isEmpty()) {
+                                            Text(
+                                                text = "No players available",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        } else {
+                                            PlayersPager(
+                                                modifier = Modifier.fillMaxWidth()
+                                                    .wrapContentHeight(),
+                                                tvFocusRequester = miniPlayerFocusRequester,
+                                                playerPagerState = playerPagerState,
+                                                playersState = state,
+                                                serverUrl = serverUrl,
+                                                simplePlayerAction = { playerId, action ->
+                                                    viewModel.playerAction(playerId, action)
+                                                },
+                                                playerAction = { playerData, action ->
+                                                    viewModel.playerAction(playerData, action)
+                                                },
+                                                onPlayersRefreshClick = viewModel::refreshPlayers,
+                                                onFavoriteClick = actionsViewModel::onFavoriteClick,
+                                                showQueue = false,
+                                                isQueueExpanded = isQueueExpanded,
+                                                onQueueExpandedSwitch = {
+                                                    isQueueExpanded = !isQueueExpanded
+                                                },
+                                                onGoToLibrary = { showPlayersView = false },
+                                                onItemMoved = null,
+                                                queueAction = { action ->
+                                                    viewModel.queueAction(action)
+                                                },
+                                                settingsAction = viewModel::openPlayerSettings,
+                                                dspSettingsAction = viewModel::openPlayerDspSettings,
+                                                onNavigateUp = {
+                                                    try {
+                                                        railFocusRequester.requestFocus()
+                                                    } catch (_: Exception) {
+                                                    }
+                                                },
+                                                onExpandClick = { showPlayersView = true },
+                                            )
+                                        }
+                                    }
+
+                                    else -> Text(
+                                        text = "No players available",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }
                 } else {
-                    Column(
+                    // Expanded player — full screen, no rail
+                    val expandedFocusRequester = remember { FocusRequester() }
+                    val closeBtnFocusRequester = remember { FocusRequester() }
+
+                    // Album art background
+                    val currentTrack = data?.playerData
+                        ?.getOrNull(playerPagerState.currentPage)
+                        ?.queueInfo?.currentItem?.track
+                    val artUrl = currentTrack?.imageInfo?.url(serverUrl)
+
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     ) {
-                        // Close button
-                        IconButton(
-                            onClick = { showPlayersView = false },
-                            modifier = Modifier.fillMaxWidth()
-                                .align(Alignment.CenterHorizontally)
-                        ) {
-                            Icon(
-                                Icons.Default.ExpandMore,
-                                "Collapse",
-                                modifier = Modifier.size(32.dp)
+                        // Album art background — drawn on top of solid background
+                        if (artUrl != null) {
+                            AsyncImage(
+                                model = artUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().alpha(0.3f)
                             )
                         }
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .focusGroup()
                         ) {
+                            LaunchedEffect(Unit) {
+                                try {
+                                    expandedFocusRequester.requestFocus()
+                                } catch (_: Exception) {
+                                }
+                            }
+                            // Close button with Down key wiring to pager content
+                            IconButton(
+                                onClick = { showPlayersView = false },
+                                modifier = Modifier.fillMaxWidth()
+                                    .align(Alignment.CenterHorizontally)
+                                    .focusRequester(closeBtnFocusRequester)
+                                    .onPreviewKeyEvent { event ->
+                                        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                                            try {
+                                                expandedFocusRequester.requestFocus()
+                                            } catch (_: Exception) {
+                                            }
+                                            true
+                                        } else false
+                                    }
+                            ) {
+                                Icon(
+                                    Icons.Default.ExpandMore,
+                                    "Collapse",
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
                             when (val state = playersState) {
                                 is HomeScreenViewModel.PlayersState.Loading -> Text(
                                     text = "Loading players...",
@@ -311,6 +474,7 @@ fun HomeScreen(
                                     } else {
                                         PlayersPager(
                                             modifier = Modifier.fillMaxSize(),
+                                            tvFocusRequester = expandedFocusRequester,
                                             playerPagerState = playerPagerState,
                                             playersState = state,
                                             serverUrl = serverUrl,
@@ -348,9 +512,17 @@ fun HomeScreen(
                                                 viewModel.selectPlayer(currentPlayer)
                                                 viewModel.onPlayersSortChanged(newPlayers)
                                             },
-                                            queueAction = { action -> viewModel.queueAction(action) },
+                                            queueAction = { action ->
+                                                viewModel.queueAction(action)
+                                            },
                                             settingsAction = viewModel::openPlayerSettings,
                                             dspSettingsAction = viewModel::openPlayerDspSettings,
+                                            onNavigateUp = {
+                                                try {
+                                                    closeBtnFocusRequester.requestFocus()
+                                                } catch (_: Exception) {
+                                                }
+                                            },
                                         )
                                     }
                                 }
@@ -360,6 +532,202 @@ fun HomeScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                            }
+                        }
+                    }
+                    } // close outer Box with art background
+                }
+            } else {
+                // Phone: AnimatedContent for smooth slide transitions
+                AnimatedContent(
+                    targetState = showPlayersView,
+                    transitionSpec = {
+                        slideInVertically(
+                            initialOffsetY = { if (targetState) it else -it },
+                            animationSpec = tween(300)
+                        ) togetherWith slideOutVertically(
+                            targetOffsetY = { if (targetState) -it else it },
+                            animationSpec = tween(300)
+                        )
+                    },
+                    label = "player_transition"
+                ) { isPlayersViewShown ->
+                    if (!isPlayersViewShown) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                        ) {
+                            HomeContent(
+                                modifier = Modifier.weight(1f),
+                                homeBackStack = homeBackStack,
+                                connectionState = connectionState,
+                                dataState = dataState,
+                                serverUrl = serverUrl,
+                                onRecommendationItemClick = viewModel::onRecommendationItemClicked,
+                                onTrackPlayOption = viewModel::onTrackPlayOption,
+                                playlistActions = ActionsViewModel.PlaylistActions(
+                                    onLoadPlaylists = actionsViewModel::getEditablePlaylists,
+                                    onAddToPlaylist = actionsViewModel::addToPlaylist
+                                ),
+                                libraryActions = ActionsViewModel.LibraryActions(
+                                    onLibraryClick = actionsViewModel::onLibraryClick,
+                                    onFavoriteClick = actionsViewModel::onFavoriteClick
+                                ),
+                                providerIconFetcher = { modifier, provider ->
+                                    actionsViewModel.getProviderIcon(provider)
+                                        ?.let { ProviderIcon(modifier, it) }
+                                }
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .wrapContentHeight()
+                                    .defaultMinSize(minHeight = 100.dp)
+                                    .clickable { showPlayersView = true }
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                when (val state = playersState) {
+                                    is HomeScreenViewModel.PlayersState.Loading -> Text(
+                                        text = "Loading players...",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+
+                                    is HomeScreenViewModel.PlayersState.Data -> {
+                                        if (state.playerData.isEmpty()) {
+                                            Text(
+                                                text = "No players available",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        } else {
+                                            PlayersPager(
+                                                modifier = Modifier.fillMaxWidth().wrapContentHeight(),
+                                                playerPagerState = playerPagerState,
+                                                playersState = state,
+                                                serverUrl = serverUrl,
+                                                simplePlayerAction = { playerId, action ->
+                                                    viewModel.playerAction(playerId, action)
+                                                },
+                                                playerAction = { playerData, action ->
+                                                    viewModel.playerAction(playerData, action)
+                                                },
+                                                onPlayersRefreshClick = viewModel::refreshPlayers,
+                                                onFavoriteClick = actionsViewModel::onFavoriteClick,
+                                                showQueue = false,
+                                                isQueueExpanded = isQueueExpanded,
+                                                onQueueExpandedSwitch = {
+                                                    isQueueExpanded = !isQueueExpanded
+                                                },
+                                                onGoToLibrary = { showPlayersView = false },
+                                                onItemMoved = null,
+                                                queueAction = { action -> viewModel.queueAction(action) },
+                                                settingsAction = viewModel::openPlayerSettings,
+                                                dspSettingsAction = viewModel::openPlayerDspSettings,
+                                            )
+                                        }
+                                    }
+
+                                    else -> Text(
+                                        text = "No players available",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        ) {
+                            // Close button
+                            IconButton(
+                                onClick = { showPlayersView = false },
+                                modifier = Modifier.fillMaxWidth()
+                                    .align(Alignment.CenterHorizontally)
+                            ) {
+                                Icon(
+                                    Icons.Default.ExpandMore,
+                                    "Collapse",
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                when (val state = playersState) {
+                                    is HomeScreenViewModel.PlayersState.Loading -> Text(
+                                        text = "Loading players...",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+
+                                    is HomeScreenViewModel.PlayersState.Data -> {
+                                        if (state.playerData.isEmpty()) {
+                                            Text(
+                                                text = "No players available",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        } else {
+                                            PlayersPager(
+                                                modifier = Modifier.fillMaxSize(),
+                                                playerPagerState = playerPagerState,
+                                                playersState = state,
+                                                serverUrl = serverUrl,
+                                                simplePlayerAction = { playerId, action ->
+                                                    viewModel.playerAction(playerId, action)
+                                                },
+                                                playerAction = { playerData, action ->
+                                                    viewModel.playerAction(playerData, action)
+                                                },
+                                                onPlayersRefreshClick = viewModel::refreshPlayers,
+                                                onFavoriteClick = actionsViewModel::onFavoriteClick,
+                                                showQueue = true,
+                                                isQueueExpanded = isQueueExpanded,
+                                                onQueueExpandedSwitch = {
+                                                    isQueueExpanded = !isQueueExpanded
+                                                },
+                                                onGoToLibrary = { showPlayersView = false },
+                                                onItemMoved = { indexShift ->
+                                                    val currentPlayer =
+                                                        state.playerData[playerPagerState.currentPage].player
+                                                    val newIndex =
+                                                        (playerPagerState.currentPage + indexShift).coerceIn(
+                                                            0,
+                                                            state.playerData.size - 1
+                                                        )
+                                                    val newPlayers =
+                                                        state.playerData.map { it.player.id }
+                                                            .toMutableList()
+                                                            .apply {
+                                                                add(
+                                                                    newIndex,
+                                                                    removeAt(playerPagerState.currentPage)
+                                                                )
+                                                            }
+                                                    viewModel.selectPlayer(currentPlayer)
+                                                    viewModel.onPlayersSortChanged(newPlayers)
+                                                },
+                                                queueAction = { action -> viewModel.queueAction(action) },
+                                                settingsAction = viewModel::openPlayerSettings,
+                                                dspSettingsAction = viewModel::openPlayerDspSettings,
+                                            )
+                                        }
+                                    }
+
+                                    else -> Text(
+                                        text = "No players available",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }

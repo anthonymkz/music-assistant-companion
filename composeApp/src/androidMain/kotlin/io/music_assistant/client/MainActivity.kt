@@ -1,6 +1,8 @@
 package io.music_assistant.client
 
+import android.app.UiModeManager
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,8 +27,15 @@ class MainActivity : ComponentActivity() {
         OAuthHandler(this)
     }
 
+    private val isTV: Boolean by lazy {
+        val uiModeManager = getSystemService(UiModeManager::class.java)
+        uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        if (!isTV) {
+            enableEdgeToEdge()
+        }
         super.onCreate(savedInstanceState)
 
         // Provide OAuthHandler to AuthenticationManager

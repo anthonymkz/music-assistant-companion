@@ -4,10 +4,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,6 +31,8 @@ import io.music_assistant.client.data.model.client.AppMediaItem
 import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 import kotlinx.coroutines.launch
 
 @Composable
@@ -168,6 +176,7 @@ private fun PlayableItemWithMenu(
         providerIconFetcher: (@Composable (Modifier, String) -> Unit)?
     ) -> Unit
 ) {
+    val isTV = LocalPlatformType.current == PlatformType.TV
     var expandedTrackId by remember { mutableStateOf<String?>(null) }
     var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var playlists by remember { mutableStateOf<List<AppMediaItem.Playlist>>(emptyList()) }
@@ -183,6 +192,22 @@ private fun PlayableItemWithMenu(
             true,
             providerIconFetcher
         )
+        // On TV, show a visible "more options" button since long-press is not discoverable
+        if (isTV) {
+            IconButton(
+                onClick = { expandedTrackId = item.itemId },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(24.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "More options",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
         DropdownMenu(
             expanded = expandedTrackId == item.itemId,
             onDismissRequest = { expandedTrackId = null }
