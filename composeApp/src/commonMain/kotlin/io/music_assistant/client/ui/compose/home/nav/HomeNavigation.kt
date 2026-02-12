@@ -10,6 +10,7 @@ import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 
 sealed interface HomeNavScreen : NavKey {
+
     @Serializable
     data object Landing : HomeNavScreen
 

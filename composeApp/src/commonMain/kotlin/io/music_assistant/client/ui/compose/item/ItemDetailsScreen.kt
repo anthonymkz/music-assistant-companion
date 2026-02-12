@@ -2,6 +2,7 @@
 
 package io.music_assistant.client.ui.compose.item
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,10 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -35,6 +34,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -64,12 +64,7 @@ import io.music_assistant.client.ui.compose.common.OverflowMenu
 import io.music_assistant.client.ui.compose.common.OverflowMenuOption
 import io.music_assistant.client.ui.compose.common.ToastHost
 import io.music_assistant.client.ui.compose.common.ToastState
-import io.music_assistant.client.ui.compose.common.items.AlbumImage
-import io.music_assistant.client.ui.compose.common.items.ArtistImage
-import io.music_assistant.client.ui.compose.common.items.Badges
 import io.music_assistant.client.ui.compose.common.items.MediaItemAlbum
-import io.music_assistant.client.ui.compose.common.items.PlaylistImage
-import io.music_assistant.client.ui.compose.common.items.PodcastImage
 import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.providers.ProviderIcon
 import io.music_assistant.client.ui.compose.common.rememberToastState
@@ -102,45 +97,244 @@ fun ItemDetailsScreen(
         }
     }
 
-    ItemDetailsContent(
-        state = state,
-        serverUrl = serverUrl,
-        toastState = toastState,
-        onBack = onBack,
-        onPlayClick = viewModel::onPlayClick,
-        onSubItemClick = { item ->
-            when (item) {
-                is AppMediaItem.Artist,
-                is AppMediaItem.Album,
-                is AppMediaItem.Playlist,
-                is AppMediaItem.Podcast -> {
-                    onNavigateToItem(item.itemId, item.mediaType, item.provider)
-                }
+    Column {
 
-                else -> Unit
-            }
-        },
-        onTrackClick = viewModel::onTrackClick,
-        playlistActions = ActionsViewModel.PlaylistActions(
+        val item = (state.itemState as? DataState.Data)?.data
+        val playlistActions = ActionsViewModel.PlaylistActions(
             onLoadPlaylists = actionsViewModel::getEditablePlaylists,
             onAddToPlaylist = actionsViewModel::addToPlaylist
-        ),
-        onRemoveFromPlaylist = { id, pos ->
-            actionsViewModel.removeFromPlaylist(
-                id,
-                pos,
-                viewModel::reload
-            )
-        },
-        libraryActions = ActionsViewModel.LibraryActions(
+        )
+        val libraryActions = ActionsViewModel.LibraryActions(
             onLibraryClick = actionsViewModel::onLibraryClick,
             onFavoriteClick = actionsViewModel::onFavoriteClick
-        ),
-        providerIconFetcher = { modifier, provider ->
-            actionsViewModel.getProviderIcon(provider)
-                ?.let { ProviderIcon(modifier, it) }
+        )
+        ItemDetailsTopBar(
+            onBack = onBack,
+            onPlayClick = viewModel::onPlayClick,
+            item = item,
+            playlistActions = playlistActions.takeIf { item is AppMediaItem.Track || item is AppMediaItem.Album },
+            libraryActions = libraryActions,
+        )
+
+        ItemDetailsContent(
+            state = state,
+            serverUrl = serverUrl,
+            toastState = toastState,
+            onSubItemClick = { item ->
+                when (item) {
+                    is AppMediaItem.Artist,
+                    is AppMediaItem.Album,
+                    is AppMediaItem.Playlist,
+                    is AppMediaItem.Podcast -> {
+                        onNavigateToItem(item.itemId, item.mediaType, item.provider)
+                    }
+
+                    else -> Unit
+                }
+            },
+            onTrackClick = viewModel::onTrackClick,
+            playlistActions = playlistActions,
+            onRemoveFromPlaylist = { id, pos ->
+                actionsViewModel.removeFromPlaylist(
+                    id,
+                    pos,
+                    viewModel::reload
+                )
+            },
+            libraryActions = libraryActions,
+            providerIconFetcher = { modifier, provider ->
+                actionsViewModel.getProviderIcon(provider)
+                    ?.let { ProviderIcon(modifier, it) }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ItemDetailsTopBar(
+    item: AppMediaItem?,
+    onBack: () -> Unit,
+    onPlayClick: (QueueOption, Boolean) -> Unit,
+    libraryActions: ActionsViewModel.LibraryActions,
+    playlistActions: ActionsViewModel.PlaylistActions?,
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
+    var playlists by remember { mutableStateOf<List<AppMediaItem.Playlist>>(emptyList()) }
+    var isLoadingPlaylists by remember { mutableStateOf(false) }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    modifier = Modifier.basicMarquee(),
+                    text = item?.name ?: "Loading...",
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                item?.subtitle?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            item?.let {
+                Button(
+                    onClick = { onPlayClick(QueueOption.REPLACE, false) },
+                ) {
+                    Icon(Icons.Default.PlayArrow, null)
+                    Spacer(Modifier.width(4.dp))
+                }
+
+                OverflowMenu(
+                    modifier = Modifier,
+                    buttonContent = { onClick ->
+                        Icon(
+                            modifier = Modifier.clickable { onClick() },
+                            imageVector = Icons.Default.ExpandMore,
+                            contentDescription = null
+                        )
+                    },
+                    options = buildList {
+                        add(
+                            OverflowMenuOption(
+                                title = "Insert next and play",
+                                icon = Icons.Default.PlaylistAddCircle
+                            ) { onPlayClick(QueueOption.PLAY, false) })
+                        add(
+                            OverflowMenuOption(
+                                title = "Insert next",
+                                icon = Icons.Default.QueuePlayNext
+                            ) {
+                                onPlayClick(QueueOption.NEXT, false)
+                            })
+                        add(
+                            OverflowMenuOption(
+                                title = "Add to bottom",
+                                icon = Icons.Default.AddToQueue
+                            ) {
+                                onPlayClick(
+                                    QueueOption.ADD, false
+                                )
+                            })
+                        if (item.canStartRadio) {
+                            add(
+                                OverflowMenuOption(
+                                    title = "Start radio",
+                                    icon = Icons.Default.Radio
+                                ) {
+                                    onPlayClick(QueueOption.REPLACE, true)
+                                })
+                        }
+                        add(
+                            OverflowMenuOption(
+                                title =
+                                    if (item.isInLibrary) "Remove from library"
+                                    else "Add to library",
+                                icon =
+                                    if (item.isInLibrary) TablerIcons.FolderMinus
+                                    else TablerIcons.FolderPlus
+                            ) { libraryActions.onLibraryClick(item) })
+                        if (item.isInLibrary) {
+                            add(
+                                OverflowMenuOption(
+                                    title =
+                                        if (item.favorite == true) "Unfavorite"
+                                        else "Favorite",
+                                    icon =
+                                        if (item.favorite == true) TablerIcons.HeartBroken
+                                        else TablerIcons.Heart
+                                ) { libraryActions.onFavoriteClick(item) })
+                        }
+                        playlistActions?.let {
+                            add(
+                                OverflowMenuOption(
+                                    title = "Add to Playlist",
+                                    icon = Icons.AutoMirrored.Filled.PlaylistAdd
+                                ) {
+                                    showPlaylistDialog = true
+                                    // Load playlists when dialog opens
+                                    coroutineScope.launch {
+                                        isLoadingPlaylists = true
+                                        playlists = it.onLoadPlaylists()
+                                        isLoadingPlaylists = false
+                                    }
+                                })
+                        }
+                    }
+                )
+            }
         }
-    )
+    }
+    // Add to Playlist dialog
+    if (showPlaylistDialog) {
+        item?.let {
+            AlertDialog(
+                onDismissRequest = {
+                    showPlaylistDialog = false
+                    playlists = emptyList()
+                    isLoadingPlaylists = false
+                },
+                title = { Text("Add to Playlist") },
+                text = {
+                    if (isLoadingPlaylists) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    } else if (playlists.isEmpty()) {
+                        Text("No editable playlists available")
+                    } else {
+                        Column {
+                            playlists.forEach { playlist ->
+                                TextButton(
+                                    onClick = {
+                                        playlistActions?.onAddToPlaylist(item, playlist)
+                                        showPlaylistDialog = false
+                                        playlists = emptyList()
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = playlist.name,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = {
+                        showPlaylistDialog = false
+                        playlists = emptyList()
+                        isLoadingPlaylists = false
+                    }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+    }
 }
 
 @Composable
@@ -148,8 +342,6 @@ private fun ItemDetailsContent(
     state: ItemDetailsViewModel.State,
     serverUrl: String?,
     toastState: ToastState,
-    onBack: () -> Unit,
-    onPlayClick: (QueueOption, Boolean) -> Unit,
     onSubItemClick: (AppMediaItem) -> Unit,
     onTrackClick: (PlayableItem, QueueOption, Boolean) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
@@ -196,18 +388,6 @@ private fun ItemDetailsContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Header section - spans full width
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        HeaderSection(
-                            item = item,
-                            serverUrl = serverUrl,
-                            onPlayClick = onPlayClick,
-                            playlistActions = playlistActions.takeIf { item is AppMediaItem.Track || item is AppMediaItem.Album },
-                            libraryActions = libraryActions,
-                            providerIconFetcher = providerIconFetcher,
-                        )
-                    }
-
                     // For Artist: Albums section
                     if (item is AppMediaItem.Artist) {
                         when (val albumsState = state.albumsState) {
@@ -307,213 +487,6 @@ private fun ItemDetailsContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = 48.dp)
-        )
-        // Place it here so it'd be clickable
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
-        }
-    }
-}
-
-@Composable
-private fun HeaderSection(
-    item: AppMediaItem,
-    serverUrl: String?,
-    onPlayClick: (QueueOption, Boolean) -> Unit,
-    playlistActions: ActionsViewModel.PlaylistActions?,
-    libraryActions: ActionsViewModel.LibraryActions,
-    providerIconFetcher: @Composable ((Modifier, String) -> Unit)?,
-
-    ) {
-    var showPlaylistDialog by rememberSaveable { mutableStateOf(false) }
-    var playlists by remember { mutableStateOf<List<AppMediaItem.Playlist>>(emptyList()) }
-    var isLoadingPlaylists by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
-    Row(
-        modifier = Modifier
-            .padding(start = 40.dp, end = 16.dp)
-            .fillMaxWidth()
-            .height(128.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Box {
-            when (item) {
-                is AppMediaItem.Artist -> ArtistImage(128.dp, item, serverUrl)
-                is AppMediaItem.Album -> AlbumImage(128.dp, item, serverUrl)
-                is AppMediaItem.Playlist -> PlaylistImage(128.dp, item, serverUrl)
-                is AppMediaItem.Podcast -> PodcastImage(128.dp, item, serverUrl)
-                else -> Unit
-            }
-            Badges(
-                item = item,
-                providerIconFetcher = providerIconFetcher
-            )
-        }
-
-        Column(
-            modifier = Modifier.fillMaxHeight(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = item.name,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.headlineSmall
-            )
-            item.subtitle?.let { subtitle ->
-                Text(
-                    text = subtitle,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-
-                Button(
-                    onClick = { onPlayClick(QueueOption.REPLACE, false) },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.PlayArrow, null)
-                    Spacer(Modifier.width(4.dp))
-                }
-
-                OverflowMenu(
-                    modifier = Modifier,
-                    buttonContent = { onClick ->
-                        Icon(
-                            modifier = Modifier.clickable { onClick() },
-                            imageVector = Icons.Default.ExpandMore,
-                            contentDescription = null
-                        )
-                    },
-                    options = buildList {
-                        add(
-                            OverflowMenuOption(
-                                title = "Insert next and play",
-                                icon = Icons.Default.PlaylistAddCircle
-                            ) { onPlayClick(QueueOption.PLAY, false) })
-                        add(
-                            OverflowMenuOption(
-                                title = "Insert next",
-                                icon = Icons.Default.QueuePlayNext
-                            ) {
-                                onPlayClick(QueueOption.NEXT, false)
-                            })
-                        add(
-                            OverflowMenuOption(
-                                title = "Add to bottom",
-                                icon = Icons.Default.AddToQueue
-                            ) {
-                                onPlayClick(
-                                    QueueOption.ADD, false
-                                )
-                            })
-                        if (item.canStartRadio) {
-                            add(
-                                OverflowMenuOption(
-                                    title = "Start radio",
-                                    icon = Icons.Default.Radio
-                                ) {
-                                    onPlayClick(QueueOption.REPLACE, true)
-                                })
-                        }
-                        add(
-                            OverflowMenuOption(
-                                title =
-                                    if (item.isInLibrary) "Remove from library"
-                                    else "Add to library",
-                                icon =
-                                    if (item.isInLibrary) TablerIcons.FolderMinus
-                                    else TablerIcons.FolderPlus
-                            ) { libraryActions.onLibraryClick(item) })
-                        if (item.isInLibrary) {
-                            add(
-                                OverflowMenuOption(
-                                    title =
-                                        if (item.favorite == true) "Unfavorite"
-                                        else "Favorite",
-                                    icon =
-                                        if (item.favorite == true) TablerIcons.HeartBroken
-                                        else TablerIcons.Heart
-                                ) { libraryActions.onFavoriteClick(item) })
-                        }
-                        playlistActions?.let {
-                            add(
-                                OverflowMenuOption(
-                                    title = "Add to Playlist",
-                                    icon = Icons.AutoMirrored.Filled.PlaylistAdd
-                                ) {
-                                    showPlaylistDialog = true
-                                    // Load playlists when dialog opens
-                                    coroutineScope.launch {
-                                        isLoadingPlaylists = true
-                                        playlists = it.onLoadPlaylists()
-                                        isLoadingPlaylists = false
-                                    }
-                                })
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    // Add to Playlist dialog
-    if (showPlaylistDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                showPlaylistDialog = false
-                playlists = emptyList()
-                isLoadingPlaylists = false
-            },
-            title = { Text("Add to Playlist") },
-            text = {
-                if (isLoadingPlaylists) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                } else if (playlists.isEmpty()) {
-                    Text("No editable playlists available")
-                } else {
-                    Column {
-                        playlists.forEach { playlist ->
-                            TextButton(
-                                onClick = {
-                                    playlistActions?.onAddToPlaylist(item, playlist)
-                                    showPlaylistDialog = false
-                                    playlists = emptyList()
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = playlist.name,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = {
-                    showPlaylistDialog = false
-                    playlists = emptyList()
-                    isLoadingPlaylists = false
-                }) {
-                    Text("Cancel")
-                }
-            }
         )
     }
 }

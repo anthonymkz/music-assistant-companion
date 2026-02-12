@@ -4,6 +4,7 @@ package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -29,9 +31,12 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,9 +45,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.music_assistant.client.data.model.client.AppMediaItem
 import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.MediaType
@@ -57,7 +64,11 @@ import io.music_assistant.client.ui.compose.common.items.RadioWithMenu
 import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
+import io.music_assistant.client.ui.compose.nav.NavScreen
 import io.music_assistant.client.utils.SessionState
+import musicassistantclient.composeapp.generated.resources.Res
+import musicassistantclient.composeapp.generated.resources.mass
+import org.jetbrains.compose.resources.painterResource
 
 @Composable
 fun LandingPage(
@@ -70,6 +81,7 @@ fun LandingPage(
     onLibraryItemClick: (MediaType?) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
+    navigateTo: (NavScreen) -> Unit,
     providerIconFetcher: (@Composable (Modifier, String) -> Unit)
 ) {
     val filteredData = remember(dataState) {
@@ -92,41 +104,89 @@ fun LandingPage(
 
     val listState = rememberLazyListState()
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        state = listState,
-        contentPadding = PaddingValues(bottom = 16.dp)
-    ) {
-        // Your library row
-        item {
-            LibraryRow(onLibraryItemClick = onLibraryItemClick)
-        }
-        if (connectionState !is SessionState.Connected || dataState !is DataState.Data) {
+    Column(modifier = modifier.fillMaxSize()) {
+
+        LandingPageTopBar(navigateTo)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            state = listState,
+            contentPadding = PaddingValues(bottom = 16.dp)
+        ) {
+            // Your library row
             item {
-                Box(
-                    modifier = modifier.fillMaxWidth().height(200.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
+                LibraryRow(onLibraryItemClick = onLibraryItemClick)
+            }
+            if (connectionState !is SessionState.Connected || dataState !is DataState.Data) {
+                item {
+                    Box(
+                        modifier = modifier.fillMaxWidth().height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+            } else {
+                items(
+                    items = filteredData,
+                    key = { it.itemId }
+                ) { row ->
+                    CategoryRow(
+                        serverUrl = serverUrl,
+                        row = row,
+                        onItemClick = onItemClick,
+                        onTrackPlayOption = onTrackPlayOption,
+                        onAllClick = { row.rowItemType?.let { onLibraryItemClick(it) } },
+                        mediaItems = row.items.orEmpty(),
+                        playlistActions = playlistActions,
+                        libraryActions = libraryActions,
+                        providerIconFetcher = providerIconFetcher,
+                    )
                 }
             }
-        } else {
-            items(
-                items = filteredData,
-                key = { it.itemId }
-            ) { row ->
-                CategoryRow(
-                    serverUrl = serverUrl,
-                    row = row,
-                    onItemClick = onItemClick,
-                    onTrackPlayOption = onTrackPlayOption,
-                    onAllClick = { row.rowItemType?.let { onLibraryItemClick(it) } },
-                    mediaItems = row.items.orEmpty(),
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher,
-                )
-            }
+        }
+    }
+}
+
+@Composable
+private fun LandingPageTopBar(
+    navigateTo: (NavScreen) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.height(64.dp).fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start)
+        ) {
+            Image(
+                painter = painterResource(Res.drawable.mass),
+                contentDescription = "Music Assistant Logo",
+                modifier = Modifier.size(48.dp)
+            )
+            Text(
+                text = "MASS",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(
+                modifier = Modifier
+                    .padding(end = 16.dp)
+                    .size(24.dp)
+                    .clickable {
+                        navigateTo(NavScreen.Settings)
+                    },
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Settings",
+                tint = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }

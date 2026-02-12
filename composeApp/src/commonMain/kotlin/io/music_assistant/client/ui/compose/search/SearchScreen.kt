@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -27,12 +28,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.capitalize
 import androidx.compose.ui.text.input.ImeAction
@@ -68,46 +73,76 @@ fun SearchScreen(
     val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle(null)
     val toastState = rememberToastState()
 
-    // Collect toasts
     LaunchedEffect(Unit) {
         actionsViewModel.toasts.collect { toast ->
             toastState.showToast(toast)
         }
     }
 
-    SearchContent(
-        state = state,
-        serverUrl = serverUrl,
-        toastState = toastState,
-        onBack = onBack,
-        onQueryChanged = viewModel::onQueryChanged,
-        onMediaTypeToggled = viewModel::onMediaTypeToggled,
-        onLibraryOnlyToggled = viewModel::onLibraryOnlyToggled,
-        onItemClick = { item ->
-            when (item) {
-                is AppMediaItem.Artist,
-                is AppMediaItem.Album,
-                is AppMediaItem.Playlist -> {
-                    onNavigateToItem(item.itemId, item.mediaType, item.provider)
-                }
+    Column(modifier = Modifier.fillMaxSize()) {
+        SearchTopBar(
+            onBack = onBack,
+        )
 
-                else -> Unit
+        SearchContent(
+            state = state,
+            serverUrl = serverUrl,
+            toastState = toastState,
+            onQueryChanged = viewModel::onQueryChanged,
+            onMediaTypeToggled = viewModel::onMediaTypeToggled,
+            onLibraryOnlyToggled = viewModel::onLibraryOnlyToggled,
+            onItemClick = { item ->
+                when (item) {
+                    is AppMediaItem.Artist,
+                    is AppMediaItem.Album,
+                    is AppMediaItem.Playlist -> {
+                        onNavigateToItem(item.itemId, item.mediaType, item.provider)
+                    }
+
+                    else -> Unit
+                }
+            },
+            onTrackClick = viewModel::onTrackClick,
+            playlistActions = ActionsViewModel.PlaylistActions(
+                onLoadPlaylists = actionsViewModel::getEditablePlaylists,
+                onAddToPlaylist = actionsViewModel::addToPlaylist
+            ),
+            libraryActions = ActionsViewModel.LibraryActions(
+                onLibraryClick = actionsViewModel::onLibraryClick,
+                onFavoriteClick = actionsViewModel::onFavoriteClick
+            ),
+            providerIconFetcher = { modifier, provider ->
+                actionsViewModel.getProviderIcon(provider)
+                    ?.let { ProviderIcon(modifier, it) }
             }
-        },
-        onTrackClick = viewModel::onTrackClick,
-        playlistActions = ActionsViewModel.PlaylistActions(
-            onLoadPlaylists = actionsViewModel::getEditablePlaylists,
-            onAddToPlaylist = actionsViewModel::addToPlaylist
-        ),
-        libraryActions = ActionsViewModel.LibraryActions(
-            onLibraryClick = actionsViewModel::onLibraryClick,
-            onFavoriteClick = actionsViewModel::onFavoriteClick
-        ),
-        providerIconFetcher = { modifier, provider ->
-            actionsViewModel.getProviderIcon(provider)
-                ?.let { ProviderIcon(modifier, it) }
+        )
+    }
+}
+
+@Composable
+private fun SearchTopBar(
+    onBack: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.height(64.dp).fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start)
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+            }
+            Text(
+                text = "Global search",
+                style = MaterialTheme.typography.titleLarge
+            )
         }
-    )
+    }
 }
 
 @Composable
@@ -115,7 +150,6 @@ private fun SearchContent(
     state: SearchViewModel.State,
     serverUrl: String?,
     toastState: ToastState,
-    onBack: () -> Unit,
     onQueryChanged: (String) -> Unit,
     onMediaTypeToggled: (MediaType, Boolean) -> Unit,
     onLibraryOnlyToggled: (Boolean) -> Unit,
@@ -126,27 +160,27 @@ private fun SearchContent(
     providerIconFetcher: (@Composable (Modifier, String) -> Unit),
 ) {
     val focusManager = LocalFocusManager.current
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(focusRequester) {
+        focusRequester.requestFocus()
+    }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Back button
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
-                }
-                // Search input
-                OutlinedTextField(
-                    modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
-                    value = state.searchState.query,
-                    onValueChange = onQueryChanged,
-                    maxLines = 1,
-                    label = { Text(if (state.searchState.query.trim().length < 3) "Type at least 3 characters to search" else "Search query") },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = {
-                        onQueryChanged(state.searchState.query)
-                        focusManager.clearFocus()
-                    })
-                )
-            }
+            OutlinedTextField(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+                value = state.searchState.query,
+                onValueChange = onQueryChanged,
+                maxLines = 1,
+                label = { Text(if (state.searchState.query.trim().length < 3) "Type at least 3 characters to search" else "Search query") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    onQueryChanged(state.searchState.query)
+                    focusManager.clearFocus()
+                })
+            )
 
             // Search filters (always visible)
             SearchFilters(

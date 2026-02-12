@@ -8,31 +8,25 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,10 +39,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.entryProvider
@@ -70,9 +61,6 @@ import io.music_assistant.client.ui.compose.nav.NavScreen
 import io.music_assistant.client.ui.compose.search.SearchScreen
 import io.music_assistant.client.utils.SessionState
 import kotlinx.coroutines.flow.collectLatest
-import musicassistantclient.composeapp.generated.resources.Res
-import musicassistantclient.composeapp.generated.resources.mass
-import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -127,46 +115,7 @@ fun HomeScreen(
     }
 
     Scaffold(
-        topBar = {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(8.dp).statusBarsPadding(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Image(
-                        painter = painterResource(Res.drawable.mass),
-                        contentDescription = "Music Assistant Logo",
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Text(
-                        text = "MASS",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Icon(
-                        modifier = Modifier
-                            .padding(end = 16.dp)
-                            .size(24.dp)
-                            .clickable {
-                                navigateTo(NavScreen.Settings)
-                            },
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Settings",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-        }
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
     ) { paddingValues ->
         val connectionState = recommendationsState.value.connectionState
         val dataState = recommendationsState.value.recommendations
@@ -207,11 +156,11 @@ fun HomeScreen(
                                 onLibraryClick = actionsViewModel::onLibraryClick,
                                 onFavoriteClick = actionsViewModel::onFavoriteClick
                             ),
-                            providerIconFetcher = { modifier, provider ->
-                                actionsViewModel.getProviderIcon(provider)
-                                    ?.let { ProviderIcon(modifier, it) }
-                            }
-                        )
+                            navigateTo = navigateTo
+                        ) { modifier, provider ->
+                            actionsViewModel.getProviderIcon(provider)
+                                ?.let { ProviderIcon(modifier, it) }
+                        }
 
                         Box(
                             modifier = Modifier
@@ -281,7 +230,7 @@ fun HomeScreen(
                         // Close button
                         IconButton(
                             onClick = { showPlayersView = false },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().height(36.dp)
                                 .align(Alignment.CenterHorizontally)
                         ) {
                             Icon(
@@ -380,6 +329,7 @@ private fun HomeContent(
     onTrackPlayOption: (PlayableItem, QueueOption, Boolean) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
+    navigateTo: (NavScreen) -> Unit,
     providerIconFetcher: (@Composable (Modifier, String) -> Unit)
 ) {
     @Suppress("UNCHECKED_CAST")
@@ -441,6 +391,7 @@ private fun HomeContent(
                     },
                     playlistActions = playlistActions,
                     libraryActions = libraryActions,
+                    navigateTo = navigateTo,
                     providerIconFetcher = providerIconFetcher
                 )
             }

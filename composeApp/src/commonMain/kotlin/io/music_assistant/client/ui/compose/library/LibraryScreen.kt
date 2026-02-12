@@ -2,12 +2,14 @@
 
 package io.music_assistant.client.ui.compose.library
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -22,8 +24,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.SecondaryScrollableTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import compose.icons.TablerIcons
@@ -86,29 +89,83 @@ fun LibraryScreen(
         }
     }
 
-    Library(
-        state = state,
-        serverUrl = serverUrl,
-        toastState = toastState,
-        onBack = onBack,
-        onTabSelected = viewModel::onTabSelected,
-        onItemClick = onItemClick,
-        onTrackClick = viewModel::onTrackClick,
-        onCreatePlaylistClick = viewModel::onCreatePlaylistClick,
-        onLoadMore = viewModel::loadMore,
-        onSearchQueryChanged = viewModel::onSearchQueryChanged,
-        onOnlyFavoritesClicked = viewModel::onOnlyFavoritesClicked,
-        onDismissCreatePlaylistDialog = viewModel::onDismissCreatePlaylistDialog,
-        onCreatePlaylist = viewModel::createPlaylist,
-        playlistActions = ActionsViewModel.PlaylistActions(
-            onLoadPlaylists = actionsViewModel::getEditablePlaylists,
-            onAddToPlaylist = actionsViewModel::addToPlaylist
-        ),
-        libraryActions = ActionsViewModel.LibraryActions(
-            onLibraryClick = actionsViewModel::onLibraryClick,
-            onFavoriteClick = actionsViewModel::onFavoriteClick
-        ),
-    )
+    Column(modifier = Modifier.fillMaxSize()) {
+        LibraryTopBar(
+            onBack = onBack,
+            tabs = state.tabs,
+            onTabSelected = viewModel::onTabSelected,
+        )
+        Library(
+            state = state,
+            serverUrl = serverUrl,
+            toastState = toastState,
+
+            onItemClick = onItemClick,
+            onTrackClick = viewModel::onTrackClick,
+            onCreatePlaylistClick = viewModel::onCreatePlaylistClick,
+            onLoadMore = viewModel::loadMore,
+            onSearchQueryChanged = viewModel::onSearchQueryChanged,
+            onOnlyFavoritesClicked = viewModel::onOnlyFavoritesClicked,
+            onDismissCreatePlaylistDialog = viewModel::onDismissCreatePlaylistDialog,
+            onCreatePlaylist = viewModel::createPlaylist,
+            playlistActions = ActionsViewModel.PlaylistActions(
+                onLoadPlaylists = actionsViewModel::getEditablePlaylists,
+                onAddToPlaylist = actionsViewModel::addToPlaylist
+            ),
+            libraryActions = ActionsViewModel.LibraryActions(
+                onLibraryClick = actionsViewModel::onLibraryClick,
+                onFavoriteClick = actionsViewModel::onFavoriteClick
+            ),
+        )
+    }
+}
+
+@Composable
+private fun LibraryTopBar(
+    onBack: () -> Unit,
+    tabs: List<LibraryViewModel.TabState>,
+    onTabSelected: (LibraryViewModel.Tab) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.height(64.dp).fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start)
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+            }
+            // Tab row
+            PrimaryScrollableTabRow(
+                containerColor = Color.Transparent,
+                selectedTabIndex = tabs.indexOfFirst { it.isSelected }
+            ) {
+                tabs.forEach { tabState ->
+                    Tab(
+                        selected = tabState.isSelected,
+                        onClick = { onTabSelected(tabState.tab) },
+                        text = {
+                            Text(
+                                when (tabState.tab) {
+                                    LibraryViewModel.Tab.ARTISTS -> "Artists"
+                                    LibraryViewModel.Tab.ALBUMS -> "Albums"
+                                    LibraryViewModel.Tab.TRACKS -> "Tracks"
+                                    LibraryViewModel.Tab.PLAYLISTS -> "Playlists"
+                                    LibraryViewModel.Tab.PODCASTS -> "Podcasts"
+                                    LibraryViewModel.Tab.RADIOS -> "Radio"
+                                }
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -116,8 +173,6 @@ private fun Library(
     state: LibraryViewModel.State,
     serverUrl: String?,
     toastState: io.music_assistant.client.ui.compose.common.ToastState,
-    onBack: () -> Unit,
-    onTabSelected: (LibraryViewModel.Tab) -> Unit,
     onItemClick: (AppMediaItem) -> Unit,
     onTrackClick: (PlayableItem, QueueOption, Boolean) -> Unit,
     onCreatePlaylistClick: () -> Unit,
@@ -136,35 +191,6 @@ private fun Library(
             modifier = Modifier
                 .fillMaxSize()
         ) {
-            Row {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-                // Tab row
-                SecondaryScrollableTabRow(
-                    selectedTabIndex = state.tabs.indexOfFirst { it.isSelected }
-                ) {
-                    state.tabs.forEach { tabState ->
-                        Tab(
-                            selected = tabState.isSelected,
-                            onClick = { onTabSelected(tabState.tab) },
-                            text = {
-                                Text(
-                                    when (tabState.tab) {
-                                        LibraryViewModel.Tab.ARTISTS -> "Artists"
-                                        LibraryViewModel.Tab.ALBUMS -> "Albums"
-                                        LibraryViewModel.Tab.TRACKS -> "Tracks"
-                                        LibraryViewModel.Tab.PLAYLISTS -> "Playlists"
-                                        LibraryViewModel.Tab.PODCASTS -> "Podcasts"
-                                        LibraryViewModel.Tab.RADIOS -> "Radio"
-                                    }
-                                )
-                            }
-                        )
-                    }
-                }
-            }
-
             // Quick search input
             OutlinedTextField(
                 modifier = Modifier
@@ -277,7 +303,14 @@ private fun TabContent(
     val radiosGridState = rememberLazyGridState()
 
     val gridStates =
-        remember(artistsGridState, albumsGridState, tracksGridState, playlistsGridState, podcastsGridState, radiosGridState) {
+        remember(
+            artistsGridState,
+            albumsGridState,
+            tracksGridState,
+            playlistsGridState,
+            podcastsGridState,
+            radiosGridState
+        ) {
             mapOf(
                 LibraryViewModel.Tab.ARTISTS to artistsGridState,
                 LibraryViewModel.Tab.ALBUMS to albumsGridState,
