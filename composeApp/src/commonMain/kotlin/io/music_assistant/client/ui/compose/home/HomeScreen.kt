@@ -459,7 +459,6 @@ fun HomeScreen(
                             }
                         }
                     }
-                    } // close outer Box with art background
                 }
             } else {
                 // Phone: AnimatedContent for smooth slide transitions
