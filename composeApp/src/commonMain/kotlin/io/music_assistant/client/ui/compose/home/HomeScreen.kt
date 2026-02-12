@@ -15,6 +15,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
+import io.music_assistant.client.ui.compose.common.action.QueueAction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
@@ -69,6 +71,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import io.music_assistant.client.data.model.client.AppMediaItem
+import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.ui.compose.common.DataState
@@ -137,9 +140,10 @@ fun HomeScreen(
 
     // TV rail: derive which destination is selected from the back stack
     @Suppress("UNCHECKED_CAST")
-    val currentRailDestination by remember(homeBackStack) {
+    val currentRailDestination by remember(homeBackStack, showPlayersView) {
         derivedStateOf {
-            when (homeBackStack.last()) {
+            if (showPlayersView) TvNavDestination.NowPlaying
+            else when (homeBackStack.last()) {
                 is HomeNavScreen.Library -> TvNavDestination.Library
                 is HomeNavScreen.Search -> TvNavDestination.Search
                 is HomeNavScreen.Landing -> TvNavDestination.Home
@@ -332,65 +336,28 @@ fun HomeScreen(
                                     .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                                 contentAlignment = Alignment.Center
                             ) {
-                                when (val state = playersState) {
-                                    is HomeScreenViewModel.PlayersState.Loading -> Text(
-                                        text = "Loading players...",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-
-                                    is HomeScreenViewModel.PlayersState.Data -> {
-                                        if (state.playerData.isEmpty()) {
-                                            Text(
-                                                text = "No players available",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        } else {
-                                            PlayersPager(
-                                                modifier = Modifier.fillMaxWidth()
-                                                    .wrapContentHeight(),
-                                                tvFocusRequester = miniPlayerFocusRequester,
-                                                playerPagerState = playerPagerState,
-                                                playersState = state,
-                                                serverUrl = serverUrl,
-                                                simplePlayerAction = { playerId, action ->
-                                                    viewModel.playerAction(playerId, action)
-                                                },
-                                                playerAction = { playerData, action ->
-                                                    viewModel.playerAction(playerData, action)
-                                                },
-                                                onPlayersRefreshClick = viewModel::refreshPlayers,
-                                                onFavoriteClick = actionsViewModel::onFavoriteClick,
-                                                showQueue = false,
-                                                isQueueExpanded = isQueueExpanded,
-                                                onQueueExpandedSwitch = {
-                                                    isQueueExpanded = !isQueueExpanded
-                                                },
-                                                onGoToLibrary = { showPlayersView = false },
-                                                onItemMoved = null,
-                                                queueAction = { action ->
-                                                    viewModel.queueAction(action)
-                                                },
-                                                settingsAction = viewModel::openPlayerSettings,
-                                                dspSettingsAction = viewModel::openPlayerDspSettings,
-                                                onNavigateUp = {
-                                                    try {
-                                                        railFocusRequester.requestFocus()
-                                                    } catch (_: Exception) {
-                                                    }
-                                                },
-                                                onExpandClick = { showPlayersView = true },
-                                            )
-                                        }
-                                    }
-
-                                    else -> Text(
-                                        text = "No players available",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                                PlayersStateContent(
+                                    playersState = playersState,
+                                    pagerModifier = Modifier.fillMaxWidth().wrapContentHeight(),
+                                    playerPagerState = playerPagerState,
+                                    serverUrl = serverUrl,
+                                    showQueue = false,
+                                    isQueueExpanded = isQueueExpanded,
+                                    onQueueExpandedSwitch = { isQueueExpanded = !isQueueExpanded },
+                                    simplePlayerAction = { playerId, action -> viewModel.playerAction(playerId, action) },
+                                    playerAction = { playerData, action -> viewModel.playerAction(playerData, action) },
+                                    onPlayersRefreshClick = viewModel::refreshPlayers,
+                                    onFavoriteClick = actionsViewModel::onFavoriteClick,
+                                    onGoToLibrary = { showPlayersView = false },
+                                    onItemMoved = null,
+                                    queueAction = { action -> viewModel.queueAction(action) },
+                                    settingsAction = viewModel::openPlayerSettings,
+                                    dspSettingsAction = viewModel::openPlayerDspSettings,
+                                    tvFocusRequester = miniPlayerFocusRequester,
+                                    onNavigateUp = {
+                                        try { railFocusRequester.requestFocus() } catch (_: Exception) {}
+                                    },
+                                )
                             }
                         }
                     }
@@ -457,80 +424,37 @@ fun HomeScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center
                             ) {
-                            when (val state = playersState) {
-                                is HomeScreenViewModel.PlayersState.Loading -> Text(
-                                    text = "Loading players...",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-
-                                is HomeScreenViewModel.PlayersState.Data -> {
-                                    if (state.playerData.isEmpty()) {
-                                        Text(
-                                            text = "No players available",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    } else {
-                                        PlayersPager(
-                                            modifier = Modifier.fillMaxSize(),
-                                            tvFocusRequester = expandedFocusRequester,
-                                            playerPagerState = playerPagerState,
-                                            playersState = state,
-                                            serverUrl = serverUrl,
-                                            simplePlayerAction = { playerId, action ->
-                                                viewModel.playerAction(playerId, action)
-                                            },
-                                            playerAction = { playerData, action ->
-                                                viewModel.playerAction(playerData, action)
-                                            },
-                                            onPlayersRefreshClick = viewModel::refreshPlayers,
-                                            onFavoriteClick = actionsViewModel::onFavoriteClick,
-                                            showQueue = true,
-                                            isQueueExpanded = isQueueExpanded,
-                                            onQueueExpandedSwitch = {
-                                                isQueueExpanded = !isQueueExpanded
-                                            },
-                                            onGoToLibrary = { showPlayersView = false },
-                                            onItemMoved = { indexShift ->
-                                                val currentPlayer =
-                                                    state.playerData[playerPagerState.currentPage].player
-                                                val newIndex =
-                                                    (playerPagerState.currentPage + indexShift).coerceIn(
-                                                        0,
-                                                        state.playerData.size - 1
-                                                    )
-                                                val newPlayers =
-                                                    state.playerData.map { it.player.id }
-                                                        .toMutableList()
-                                                        .apply {
-                                                            add(
-                                                                newIndex,
-                                                                removeAt(playerPagerState.currentPage)
-                                                            )
-                                                        }
-                                                viewModel.selectPlayer(currentPlayer)
-                                                viewModel.onPlayersSortChanged(newPlayers)
-                                            },
-                                            queueAction = { action ->
-                                                viewModel.queueAction(action)
-                                            },
-                                            settingsAction = viewModel::openPlayerSettings,
-                                            dspSettingsAction = viewModel::openPlayerDspSettings,
-                                            onNavigateUp = {
-                                                try {
-                                                    closeBtnFocusRequester.requestFocus()
-                                                } catch (_: Exception) {
-                                                }
-                                            },
-                                        )
-                                    }
-                                }
-
-                                else -> Text(
-                                    text = "No players available",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                PlayersStateContent(
+                                    playersState = playersState,
+                                    pagerModifier = Modifier.fillMaxSize(),
+                                    playerPagerState = playerPagerState,
+                                    serverUrl = serverUrl,
+                                    showQueue = true,
+                                    isQueueExpanded = isQueueExpanded,
+                                    onQueueExpandedSwitch = { isQueueExpanded = !isQueueExpanded },
+                                    simplePlayerAction = { playerId, action -> viewModel.playerAction(playerId, action) },
+                                    playerAction = { playerData, action -> viewModel.playerAction(playerData, action) },
+                                    onPlayersRefreshClick = viewModel::refreshPlayers,
+                                    onFavoriteClick = actionsViewModel::onFavoriteClick,
+                                    onGoToLibrary = { showPlayersView = false },
+                                    onItemMoved = { indexShift ->
+                                        data?.let { d ->
+                                            val currentPlayer = d.playerData[playerPagerState.currentPage].player
+                                            val newIndex = (playerPagerState.currentPage + indexShift).coerceIn(0, d.playerData.size - 1)
+                                            val newPlayers = d.playerData.map { it.player.id }.toMutableList().apply {
+                                                add(newIndex, removeAt(playerPagerState.currentPage))
+                                            }
+                                            viewModel.selectPlayer(currentPlayer)
+                                            viewModel.onPlayersSortChanged(newPlayers)
+                                        }
+                                    },
+                                    queueAction = { action -> viewModel.queueAction(action) },
+                                    settingsAction = viewModel::openPlayerSettings,
+                                    dspSettingsAction = viewModel::openPlayerDspSettings,
+                                    tvFocusRequester = expandedFocusRequester,
+                                    onNavigateUp = {
+                                        try { closeBtnFocusRequester.requestFocus() } catch (_: Exception) {}
+                                    },
                                 )
                             }
                         }
@@ -589,54 +513,24 @@ fun HomeScreen(
                                     .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                                 contentAlignment = Alignment.Center
                             ) {
-                                when (val state = playersState) {
-                                    is HomeScreenViewModel.PlayersState.Loading -> Text(
-                                        text = "Loading players...",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-
-                                    is HomeScreenViewModel.PlayersState.Data -> {
-                                        if (state.playerData.isEmpty()) {
-                                            Text(
-                                                text = "No players available",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        } else {
-                                            PlayersPager(
-                                                modifier = Modifier.fillMaxWidth().wrapContentHeight(),
-                                                playerPagerState = playerPagerState,
-                                                playersState = state,
-                                                serverUrl = serverUrl,
-                                                simplePlayerAction = { playerId, action ->
-                                                    viewModel.playerAction(playerId, action)
-                                                },
-                                                playerAction = { playerData, action ->
-                                                    viewModel.playerAction(playerData, action)
-                                                },
-                                                onPlayersRefreshClick = viewModel::refreshPlayers,
-                                                onFavoriteClick = actionsViewModel::onFavoriteClick,
-                                                showQueue = false,
-                                                isQueueExpanded = isQueueExpanded,
-                                                onQueueExpandedSwitch = {
-                                                    isQueueExpanded = !isQueueExpanded
-                                                },
-                                                onGoToLibrary = { showPlayersView = false },
-                                                onItemMoved = null,
-                                                queueAction = { action -> viewModel.queueAction(action) },
-                                                settingsAction = viewModel::openPlayerSettings,
-                                                dspSettingsAction = viewModel::openPlayerDspSettings,
-                                            )
-                                        }
-                                    }
-
-                                    else -> Text(
-                                        text = "No players available",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                                PlayersStateContent(
+                                    playersState = playersState,
+                                    pagerModifier = Modifier.fillMaxWidth().wrapContentHeight(),
+                                    playerPagerState = playerPagerState,
+                                    serverUrl = serverUrl,
+                                    showQueue = false,
+                                    isQueueExpanded = isQueueExpanded,
+                                    onQueueExpandedSwitch = { isQueueExpanded = !isQueueExpanded },
+                                    simplePlayerAction = { playerId, action -> viewModel.playerAction(playerId, action) },
+                                    playerAction = { playerData, action -> viewModel.playerAction(playerData, action) },
+                                    onPlayersRefreshClick = viewModel::refreshPlayers,
+                                    onFavoriteClick = actionsViewModel::onFavoriteClick,
+                                    onGoToLibrary = { showPlayersView = false },
+                                    onItemMoved = null,
+                                    queueAction = { action -> viewModel.queueAction(action) },
+                                    settingsAction = viewModel::openPlayerSettings,
+                                    dspSettingsAction = viewModel::openPlayerDspSettings,
+                                )
                             }
                         }
                     } else {
@@ -661,79 +555,107 @@ fun HomeScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center
                             ) {
-                                when (val state = playersState) {
-                                    is HomeScreenViewModel.PlayersState.Loading -> Text(
-                                        text = "Loading players...",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-
-                                    is HomeScreenViewModel.PlayersState.Data -> {
-                                        if (state.playerData.isEmpty()) {
-                                            Text(
-                                                text = "No players available",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        } else {
-                                            PlayersPager(
-                                                modifier = Modifier.fillMaxSize(),
-                                                playerPagerState = playerPagerState,
-                                                playersState = state,
-                                                serverUrl = serverUrl,
-                                                simplePlayerAction = { playerId, action ->
-                                                    viewModel.playerAction(playerId, action)
-                                                },
-                                                playerAction = { playerData, action ->
-                                                    viewModel.playerAction(playerData, action)
-                                                },
-                                                onPlayersRefreshClick = viewModel::refreshPlayers,
-                                                onFavoriteClick = actionsViewModel::onFavoriteClick,
-                                                showQueue = true,
-                                                isQueueExpanded = isQueueExpanded,
-                                                onQueueExpandedSwitch = {
-                                                    isQueueExpanded = !isQueueExpanded
-                                                },
-                                                onGoToLibrary = { showPlayersView = false },
-                                                onItemMoved = { indexShift ->
-                                                    val currentPlayer =
-                                                        state.playerData[playerPagerState.currentPage].player
-                                                    val newIndex =
-                                                        (playerPagerState.currentPage + indexShift).coerceIn(
-                                                            0,
-                                                            state.playerData.size - 1
-                                                        )
-                                                    val newPlayers =
-                                                        state.playerData.map { it.player.id }
-                                                            .toMutableList()
-                                                            .apply {
-                                                                add(
-                                                                    newIndex,
-                                                                    removeAt(playerPagerState.currentPage)
-                                                                )
-                                                            }
-                                                    viewModel.selectPlayer(currentPlayer)
-                                                    viewModel.onPlayersSortChanged(newPlayers)
-                                                },
-                                                queueAction = { action -> viewModel.queueAction(action) },
-                                                settingsAction = viewModel::openPlayerSettings,
-                                                dspSettingsAction = viewModel::openPlayerDspSettings,
-                                            )
+                                PlayersStateContent(
+                                    playersState = playersState,
+                                    pagerModifier = Modifier.fillMaxSize(),
+                                    playerPagerState = playerPagerState,
+                                    serverUrl = serverUrl,
+                                    showQueue = true,
+                                    isQueueExpanded = isQueueExpanded,
+                                    onQueueExpandedSwitch = { isQueueExpanded = !isQueueExpanded },
+                                    simplePlayerAction = { playerId, action -> viewModel.playerAction(playerId, action) },
+                                    playerAction = { playerData, action -> viewModel.playerAction(playerData, action) },
+                                    onPlayersRefreshClick = viewModel::refreshPlayers,
+                                    onFavoriteClick = actionsViewModel::onFavoriteClick,
+                                    onGoToLibrary = { showPlayersView = false },
+                                    onItemMoved = { indexShift ->
+                                        data?.let { d ->
+                                            val currentPlayer = d.playerData[playerPagerState.currentPage].player
+                                            val newIndex = (playerPagerState.currentPage + indexShift).coerceIn(0, d.playerData.size - 1)
+                                            val newPlayers = d.playerData.map { it.player.id }.toMutableList().apply {
+                                                add(newIndex, removeAt(playerPagerState.currentPage))
+                                            }
+                                            viewModel.selectPlayer(currentPlayer)
+                                            viewModel.onPlayersSortChanged(newPlayers)
                                         }
-                                    }
-
-                                    else -> Text(
-                                        text = "No players available",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                                    },
+                                    queueAction = { action -> viewModel.queueAction(action) },
+                                    settingsAction = viewModel::openPlayerSettings,
+                                    dspSettingsAction = viewModel::openPlayerDspSettings,
+                                )
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PlayersStateContent(
+    playersState: HomeScreenViewModel.PlayersState,
+    pagerModifier: Modifier = Modifier,
+    playerPagerState: PagerState,
+    serverUrl: String?,
+    showQueue: Boolean,
+    isQueueExpanded: Boolean,
+    onQueueExpandedSwitch: () -> Unit,
+    simplePlayerAction: (String, PlayerAction) -> Unit,
+    playerAction: (PlayerData, PlayerAction) -> Unit,
+    onPlayersRefreshClick: () -> Unit,
+    onFavoriteClick: (AppMediaItem) -> Unit,
+    onGoToLibrary: () -> Unit,
+    onItemMoved: ((Int) -> Unit)?,
+    queueAction: (QueueAction) -> Unit,
+    settingsAction: (String) -> Unit,
+    dspSettingsAction: (String) -> Unit,
+    tvFocusRequester: FocusRequester? = null,
+    onNavigateUp: (() -> Unit)? = null,
+) {
+    when (playersState) {
+        is HomeScreenViewModel.PlayersState.Loading -> Text(
+            text = "Loading players...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        is HomeScreenViewModel.PlayersState.Data -> {
+            if (playersState.playerData.isEmpty()) {
+                Text(
+                    text = "No players available",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                PlayersPager(
+                    modifier = pagerModifier,
+                    tvFocusRequester = tvFocusRequester,
+                    playerPagerState = playerPagerState,
+                    playersState = playersState,
+                    serverUrl = serverUrl,
+                    simplePlayerAction = simplePlayerAction,
+                    playerAction = playerAction,
+                    onPlayersRefreshClick = onPlayersRefreshClick,
+                    onFavoriteClick = onFavoriteClick,
+                    showQueue = showQueue,
+                    isQueueExpanded = isQueueExpanded,
+                    onQueueExpandedSwitch = onQueueExpandedSwitch,
+                    onGoToLibrary = onGoToLibrary,
+                    onItemMoved = onItemMoved,
+                    queueAction = queueAction,
+                    settingsAction = settingsAction,
+                    dspSettingsAction = dspSettingsAction,
+                    onNavigateUp = onNavigateUp,
+                )
+            }
+        }
+
+        else -> Text(
+            text = "No players available",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
