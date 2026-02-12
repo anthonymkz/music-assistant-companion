@@ -21,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.music_assistant.client.data.model.client.AppMediaItem
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.QueueOption
 import io.music_assistant.client.ui.compose.common.items.EpisodeWithMenu
@@ -64,10 +66,13 @@ fun AdaptiveMediaGrid(
         }
     }
 
+    val isTV = LocalPlatformType.current == PlatformType.TV
+    val gridMinSize = if (isTV) 140.dp else 96.dp
+
     LazyVerticalGrid(
         modifier = modifier,
         state = gridState,
-        columns = GridCells.Adaptive(minSize = 96.dp),
+        columns = GridCells.Adaptive(minSize = gridMinSize),
         contentPadding = PaddingValues(8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)

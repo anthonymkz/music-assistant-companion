@@ -27,6 +27,8 @@ import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.data.model.server.RepeatMode
 import io.music_assistant.client.ui.compose.common.ActionButton
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 
 @Composable
 fun PlayerControls(
@@ -38,11 +40,13 @@ fun PlayerControls(
     showAdditionalButtons: Boolean = true,
     mainButtonSize: Dp = 48.dp
 ) {
+    val isTV = LocalPlatformType.current == PlatformType.TV
+    val effectiveMainButtonSize = if (isTV) maxOf(mainButtonSize, 64.dp) else mainButtonSize
     val player = playerData.player
     val queue = playerData.queueInfo
     val buttonsEnabled = queue?.currentItem?.isPlayable == true
-    val smallButtonSize = (mainButtonSize.value * 0.6).dp
-    val additionalButtonSize = (mainButtonSize.value * 0.4).dp
+    val smallButtonSize = (effectiveMainButtonSize.value * 0.6).dp
+    val additionalButtonSize = (effectiveMainButtonSize.value * 0.4).dp
     Row(
         modifier = modifier
             .wrapContentSize(),
@@ -93,7 +97,7 @@ fun PlayerControls(
                 false -> Icons.Default.PlayArrow
             },
             tint = MaterialTheme.colorScheme.primary,
-            size = mainButtonSize,
+            size = effectiveMainButtonSize,
             enabled = enabled && buttonsEnabled,
         ) { playerAction(playerData, PlayerAction.TogglePlayPause) }
 

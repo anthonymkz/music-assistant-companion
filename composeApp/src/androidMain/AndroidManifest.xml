@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
     <application
         android:name=".MyApplication"
         android:allowBackup="true"
@@ -13,6 +16,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:banner="@drawable/tv_banner"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="true">
         <meta-data
@@ -29,6 +33,10 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
             <!-- Custom scheme callback -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -40,6 +48,10 @@
                     android:path="/callback" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".auth.TvOAuthActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <service
             android:name="io.music_assistant.client.services.AndroidAutoPlaybackService"
 
