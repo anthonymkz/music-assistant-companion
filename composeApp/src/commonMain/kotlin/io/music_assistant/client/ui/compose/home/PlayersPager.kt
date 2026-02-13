@@ -69,6 +69,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.draw.clip
 import io.music_assistant.client.utils.formatDuration
@@ -200,7 +201,7 @@ internal fun PlayersPager(
                 Brush.verticalGradient(
                     listOf(
                         MaterialTheme.colorScheme.surfaceContainerHigh,
-                        MaterialTheme.colorScheme.primaryContainer
+                        MaterialTheme.colorScheme.surfaceContainer
                     )
                 )
             }
@@ -294,7 +295,7 @@ internal fun PlayersPager(
 
                     Column(
                         modifier = Modifier.fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         LinearProgressIndicator(
                             progress = {
@@ -302,8 +303,8 @@ internal fun PlayersPager(
                                     (elapsed / duration).coerceIn(0f, 1f)
                                 else 0f
                             },
-                            modifier = Modifier.fillMaxWidth().height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
+                            modifier = Modifier.fillMaxWidth().height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
                             color = MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant,
                         )
@@ -537,20 +538,30 @@ private fun VolumeDialog(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                LinearProgressIndicator(
-                    progress = { (currentVolume / 100f).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    LinearProgressIndicator(
+                        progress = { (currentVolume / 100f).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(8.dp)
+                            .padding(horizontal = 4.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { setVolume(currentVolume - 5f) }) {
+                    IconButton(
+                        modifier = Modifier.size(48.dp),
+                        onClick = { setVolume(currentVolume - 5f) }
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Remove,
                             contentDescription = "Volume down",
@@ -559,6 +570,7 @@ private fun VolumeDialog(
                     }
 
                     IconButton(
+                        modifier = Modifier.size(48.dp),
                         onClick = { playerAction(player, PlayerAction.ToggleMute) },
                         enabled = player.player.canMute
                     ) {
@@ -572,7 +584,10 @@ private fun VolumeDialog(
                         )
                     }
 
-                    IconButton(onClick = { setVolume(currentVolume + 5f) }) {
+                    IconButton(
+                        modifier = Modifier.size(48.dp),
+                        onClick = { setVolume(currentVolume + 5f) }
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "Volume up",

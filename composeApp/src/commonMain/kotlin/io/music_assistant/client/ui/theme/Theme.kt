@@ -9,9 +9,20 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import musicassistantclient.composeapp.generated.resources.Res
+import musicassistantclient.composeapp.generated.resources.outfit_bold
+import musicassistantclient.composeapp.generated.resources.outfit_light
+import org.jetbrains.compose.resources.Font
+
+val HeaderFontFamily: FontFamily
+    @Composable get() = FontFamily(
+        Font(Res.font.outfit_bold, FontWeight.Bold),
+        Font(Res.font.outfit_light, FontWeight.Light),
+    )
 
 private val lightScheme = lightColorScheme(
     primary = primaryLight,

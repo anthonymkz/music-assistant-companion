@@ -11,7 +11,12 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
@@ -61,8 +66,12 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import io.music_assistant.client.ui.theme.HeaderFontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -219,7 +228,9 @@ fun HomeScreen(
                     tonalElevation = 2.dp
                 ) {
                     Row(
-                        modifier = Modifier.padding(8.dp).statusBarsPadding(),
+                        modifier = Modifier
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .statusBarsPadding(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -229,10 +240,17 @@ fun HomeScreen(
                             modifier = Modifier.size(48.dp)
                         )
                         Text(
-                            text = "MASS",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 2.sp,
+                            text = buildAnnotatedString {
+                                withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = 28.sp)) {
+                                    append("MASS")
+                                }
+                                append(" ")
+                                withStyle(SpanStyle(fontWeight = FontWeight.Light, fontSize = 22.sp)) {
+                                    append("Companion")
+                                }
+                            },
+                            fontFamily = HeaderFontFamily,
+                            letterSpacing = 1.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -333,9 +351,26 @@ fun HomeScreen(
                                     .fillMaxWidth()
                                     .wrapContentHeight()
                                     .defaultMinSize(minHeight = 100.dp)
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)),
                                 contentAlignment = Alignment.Center
                             ) {
+                                // Gradient accent line
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(2.dp)
+                                        .align(Alignment.TopCenter)
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color.Transparent,
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                                    Color.Transparent
+                                                )
+                                            )
+                                        )
+                                )
                                 PlayersStateContent(
                                     playersState = playersState,
                                     pagerModifier = Modifier.fillMaxWidth().wrapContentHeight(),
@@ -383,9 +418,23 @@ fun HomeScreen(
                                 model = artUrl,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize().alpha(0.3f)
+                                modifier = Modifier.fillMaxSize().alpha(0.25f)
                             )
                         }
+
+                        // Scrim gradient for text readability over album art
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color.Transparent,
+                                            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f)
+                                        )
+                                    )
+                                )
+                        )
 
                         Column(
                             modifier = Modifier
@@ -503,15 +552,33 @@ fun HomeScreen(
                                 }
                             )
 
+                            // Mini player
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .wrapContentHeight()
                                     .defaultMinSize(minHeight = 100.dp)
+                                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                                     .clickable { showPlayersView = true }
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)),
                                 contentAlignment = Alignment.Center
                             ) {
+                                // Gradient accent line
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(2.dp)
+                                        .align(Alignment.TopCenter)
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color.Transparent,
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                                    Color.Transparent
+                                                )
+                                            )
+                                        )
+                                )
                                 PlayersStateContent(
                                     playersState = playersState,
                                     pagerModifier = Modifier.fillMaxWidth().wrapContentHeight(),
@@ -533,55 +600,75 @@ fun HomeScreen(
                             }
                         }
                     } else {
-                        Column(
+                        // Phone expanded player with album art background
+                        val currentTrack = data?.playerData
+                            ?.getOrNull(playerPagerState.currentPage)
+                            ?.queueInfo?.currentItem?.track
+                        val artUrl = currentTrack?.imageInfo?.url(serverUrl)
+
+                        Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         ) {
-                            // Close button
-                            IconButton(
-                                onClick = { showPlayersView = false },
-                                modifier = Modifier.fillMaxWidth()
-                                    .align(Alignment.CenterHorizontally)
-                            ) {
-                                Icon(
-                                    Icons.Default.ExpandMore,
-                                    "Collapse",
-                                    modifier = Modifier.size(32.dp)
+                            // Album art background
+                            if (artUrl != null) {
+                                AsyncImage(
+                                    model = artUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize().alpha(0.15f)
                                 )
                             }
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
+
+                            Column(
+                                modifier = Modifier.fillMaxSize()
                             ) {
-                                PlayersStateContent(
-                                    playersState = playersState,
-                                    pagerModifier = Modifier.fillMaxSize(),
-                                    playerPagerState = playerPagerState,
-                                    serverUrl = serverUrl,
-                                    showQueue = true,
-                                    isQueueExpanded = isQueueExpanded,
-                                    onQueueExpandedSwitch = { isQueueExpanded = !isQueueExpanded },
-                                    simplePlayerAction = { playerId, action -> viewModel.playerAction(playerId, action) },
-                                    playerAction = { playerData, action -> viewModel.playerAction(playerData, action) },
-                                    onPlayersRefreshClick = viewModel::refreshPlayers,
-                                    onFavoriteClick = actionsViewModel::onFavoriteClick,
-                                    onGoToLibrary = { showPlayersView = false },
-                                    onItemMoved = { indexShift ->
-                                        data?.let { d ->
-                                            val currentPlayer = d.playerData[playerPagerState.currentPage].player
-                                            val newIndex = (playerPagerState.currentPage + indexShift).coerceIn(0, d.playerData.size - 1)
-                                            val newPlayers = d.playerData.map { it.player.id }.toMutableList().apply {
-                                                add(newIndex, removeAt(playerPagerState.currentPage))
+                                // Close button
+                                IconButton(
+                                    onClick = { showPlayersView = false },
+                                    modifier = Modifier.fillMaxWidth()
+                                        .align(Alignment.CenterHorizontally)
+                                ) {
+                                    Icon(
+                                        Icons.Default.ExpandMore,
+                                        "Collapse",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    PlayersStateContent(
+                                        playersState = playersState,
+                                        pagerModifier = Modifier.fillMaxSize(),
+                                        playerPagerState = playerPagerState,
+                                        serverUrl = serverUrl,
+                                        showQueue = true,
+                                        isQueueExpanded = isQueueExpanded,
+                                        onQueueExpandedSwitch = { isQueueExpanded = !isQueueExpanded },
+                                        simplePlayerAction = { playerId, action -> viewModel.playerAction(playerId, action) },
+                                        playerAction = { playerData, action -> viewModel.playerAction(playerData, action) },
+                                        onPlayersRefreshClick = viewModel::refreshPlayers,
+                                        onFavoriteClick = actionsViewModel::onFavoriteClick,
+                                        onGoToLibrary = { showPlayersView = false },
+                                        onItemMoved = { indexShift ->
+                                            data?.let { d ->
+                                                val currentPlayer = d.playerData[playerPagerState.currentPage].player
+                                                val newIndex = (playerPagerState.currentPage + indexShift).coerceIn(0, d.playerData.size - 1)
+                                                val newPlayers = d.playerData.map { it.player.id }.toMutableList().apply {
+                                                    add(newIndex, removeAt(playerPagerState.currentPage))
+                                                }
+                                                viewModel.selectPlayer(currentPlayer)
+                                                viewModel.onPlayersSortChanged(newPlayers)
                                             }
-                                            viewModel.selectPlayer(currentPlayer)
-                                            viewModel.onPlayersSortChanged(newPlayers)
-                                        }
-                                    },
-                                    queueAction = { action -> viewModel.queueAction(action) },
-                                    settingsAction = viewModel::openPlayerSettings,
-                                    dspSettingsAction = viewModel::openPlayerDspSettings,
-                                )
+                                        },
+                                        queueAction = { action -> viewModel.queueAction(action) },
+                                        settingsAction = viewModel::openPlayerSettings,
+                                        dspSettingsAction = viewModel::openPlayerDspSettings,
+                                    )
+                                }
                             }
                         }
                     }

@@ -2,6 +2,7 @@ package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -252,6 +253,8 @@ fun CollapsibleQueue(
                                 val isPlayed = index < currentItemIndex
                                 val isPlayable = item.isPlayable
 
+                                val currentHighlightColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+
                                 ReorderableItem(
                                     state = reorderableLazyListState,
                                     key = item.id,
@@ -269,7 +272,13 @@ fun CollapsibleQueue(
                                                     }
                                                 )
                                                 .fillMaxWidth()
-                                                .clip(shape = RoundedCornerShape(8.dp))
+                                                .clip(shape = RoundedCornerShape(12.dp))
+                                                .conditional(
+                                                    condition = isCurrent,
+                                                    ifTrue = {
+                                                        background(currentHighlightColor)
+                                                    }
+                                                )
                                                 .conditional(
                                                     condition = isPlayed,  // Treat unplayable like played items
                                                     ifTrue = {
@@ -311,8 +320,8 @@ fun CollapsibleQueue(
                                             AsyncImage(
                                                 modifier = Modifier
                                                     .padding(end = 8.dp)
-                                                    .size(48.dp)
-                                                    .clip(RoundedCornerShape(size = 4.dp)),
+                                                    .size(56.dp)
+                                                    .clip(RoundedCornerShape(size = 8.dp)),
                                                 placeholder = placeholder,
                                                 fallback = placeholder,
                                                 model = item.track.imageInfo?.url(serverUrl),

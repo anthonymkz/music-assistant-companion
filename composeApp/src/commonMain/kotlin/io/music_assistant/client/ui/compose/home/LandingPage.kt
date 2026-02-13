@@ -4,7 +4,6 @@ package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -32,6 +30,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -169,7 +168,7 @@ fun LibraryRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             libraryItems.chunked(3).forEach { rowItems ->
                 Row(
@@ -204,40 +203,44 @@ fun LibraryItemCard(
     val primaryContainer = MaterialTheme.colorScheme.primaryContainer
     val primary = MaterialTheme.colorScheme.primary
 
-    Column(
-        modifier = modifier
-            .wrapContentSize()
-            .clip(RoundedCornerShape(8.dp))
-            .combinedClickable(onClick = onClick)
-            .padding(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    Surface(
+        onClick = onClick,
+        modifier = modifier.padding(4.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
-        Box(
-            modifier = Modifier
-                .height(64.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(primaryContainer),
-            contentAlignment = Alignment.Center
+        Column(
+            modifier = Modifier.padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val placeholder = rememberPlaceholderPainter(
-                backgroundColor = primaryContainer,
-                iconColor = primary,
-                icon = icon
-            )
-            Image(
-                painter = placeholder,
-                contentDescription = name,
-                modifier = Modifier.fillMaxSize()
+            Box(
+                modifier = Modifier
+                    .height(72.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                val placeholder = rememberPlaceholderPainter(
+                    backgroundColor = primaryContainer,
+                    iconColor = primary,
+                    icon = icon
+                )
+                Image(
+                    painter = placeholder,
+                    contentDescription = name,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = name,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
             )
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = name,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-        )
     }
 }
 

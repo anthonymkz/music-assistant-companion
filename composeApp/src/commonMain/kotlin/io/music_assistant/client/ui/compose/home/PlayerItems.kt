@@ -82,7 +82,7 @@ fun CompactPlayerItem(
             Box(
                 modifier = Modifier
                     .size(64.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(primaryContainer.copy(alpha = track?.let { 1f } ?: 0.4f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -273,7 +273,7 @@ fun FullPlayerItem(
                 .aspectRatio(1f)
                 .heightIn(max = 500.dp)
                 .padding(16.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(20.dp))
                 .background(primaryContainer.copy(alpha = track?.let { 1f } ?: 0.4f)),
             contentAlignment = Alignment.Center
         ) {

@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.music_assistant.client.data.model.client.PlayerData
+import io.music_assistant.client.utils.conditional
 import io.music_assistant.client.ui.compose.common.HorizontalPagerIndicator
 import io.music_assistant.client.ui.compose.common.OverflowMenu
 import io.music_assistant.client.ui.compose.common.OverflowMenuOption
@@ -42,15 +43,16 @@ fun PlayersTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .wrapContentHeight(),
+            .wrapContentHeight()
+            .conditional(isTV, ifTrue = { padding(vertical = 8.dp) }),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(if (isTV) 40.dp else 32.dp),
             onClick = onPlayersRefreshClick
         ) {
             Icon(
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(if (isTV) 24.dp else 20.dp),
                 imageVector = Icons.Default.Refresh,
                 contentDescription = "Refresh players",
                 tint = MaterialTheme.colorScheme.primary,
@@ -65,18 +67,18 @@ fun PlayersTopBar(
             Text(
                 text = currentPlayer?.player?.displayName ?: "No player",
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
 
             IconButton(
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(40.dp),
                 onClick = { showSpeakerDialog = true }
             ) {
                 Icon(
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(24.dp),
                     imageVector = Icons.Default.Speaker,
                     contentDescription = "Select speaker",
                     tint = MaterialTheme.colorScheme.primary,
@@ -85,11 +87,11 @@ fun PlayersTopBar(
 
             if (onExpandClick != null) {
                 IconButton(
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(40.dp),
                     onClick = onExpandClick
                 ) {
                     Icon(
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(24.dp),
                         imageVector = Icons.Default.OpenInFull,
                         contentDescription = "Expand player",
                         tint = MaterialTheme.colorScheme.primary,

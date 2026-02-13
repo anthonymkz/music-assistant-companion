@@ -44,11 +44,11 @@ fun TvNavigationRail(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         header = {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             Image(
                 painter = painterResource(Res.drawable.mass),
                 contentDescription = "Music Assistant",
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(40.dp)
             )
             Spacer(modifier = Modifier.height(8.dp))
         }
