@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -101,9 +102,44 @@ android {
         applicationId = "io.music_assistant.client"
         minSdk { version = release(libs.versions.android.minSdk.get().toInt()) }
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 2
-        versionName = "0.1.0"
+        versionCode = 3
+        versionName = "1.0.0"
     }
+
+    signingConfigs {
+        create("release") {
+            // CI: read from environment variables (GitHub Actions secrets)
+            // Local: read from keystore.properties or fall back to project-root keystore
+            val envStoreFile = System.getenv("RELEASE_KEYSTORE_PATH")
+            val envStorePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+            val envKeyAlias = System.getenv("RELEASE_KEY_ALIAS")
+            val envKeyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+
+            if (envStoreFile != null && envStorePassword != null) {
+                storeFile = file(envStoreFile)
+                storePassword = envStorePassword
+                keyAlias = envKeyAlias ?: "mass-companion"
+                keyPassword = envKeyPassword ?: envStorePassword
+            } else {
+                // Local development: try keystore.properties, then defaults
+                val keystorePropsFile = rootProject.file("keystore.properties")
+                if (keystorePropsFile.exists()) {
+                    val props = Properties().apply { load(keystorePropsFile.inputStream()) }
+                    storeFile = file(props.getProperty("storeFile", "../release.keystore"))
+                    storePassword = props.getProperty("storePassword")
+                    keyAlias = props.getProperty("keyAlias", "mass-companion")
+                    keyPassword = props.getProperty("keyPassword")
+                } else {
+                    // Direct fallback for local builds
+                    storeFile = rootProject.file("release.keystore")
+                    storePassword = "masscompanion2026"
+                    keyAlias = "mass-companion"
+                    keyPassword = "masscompanion2026"
+                }
+            }
+        }
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -111,7 +147,13 @@ android {
     }
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
