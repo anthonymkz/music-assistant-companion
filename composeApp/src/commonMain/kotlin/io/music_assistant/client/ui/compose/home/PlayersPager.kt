@@ -1,6 +1,8 @@
 package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -226,48 +228,42 @@ internal fun PlayersPager(
                             }
                     })
                     .conditional(
-                        // TV expanded: transparent so album art background shows through
-                        condition = !(isTV && showQueue),
+                        // Only TV mini mode gets the opaque gradient background.
+                        // Phone mini: floating semi-transparent player.
+                        // Phone/TV expanded: album art shows through.
+                        condition = isTV && !showQueue,
                         ifTrue = { background(brush = pageBrush) }
                     )
             ) {
-                Box(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        modifier = Modifier.align(Alignment.Center),
-                        text = player.player.displayName + (if (isLocalPlayer) " (local)" else ""),
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-//                    // Overflow menu on the right TODO re-enable when settings are fixed in MA
-//                    OverflowMenuThreeDots(
-//                        modifier = Modifier.align(Alignment.CenterEnd)
-//                            .padding(end = 8.dp),
-//                        options = listOf(
-//                            OverflowMenuOption(
-//                                title = "Settings",
-//                                onClick = { settingsAction(player.player.id) }
-//                            ),
-//                            OverflowMenuOption(
-//                                title = "DSP settings",
-//                                onClick = { dspSettingsAction(player.player.id) }
-//                            ),
-//                        )
-//                    )
+                // Player name — only show on TV (phone shows it in the top bar picker)
+                if (isTV) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            modifier = Modifier.align(Alignment.Center),
+                            text = player.player.displayName + (if (isLocalPlayer) " (local)" else ""),
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 AnimatedVisibility(
                     // TV expanded mode: always show CompactPlayerItem
                     // (FullPlayerItem's progress Slider traps D-pad focus)
                     visible = if (isTV && showQueue) true
                     else isQueueExpanded.takeIf { showQueue } != false,
-                    enter = fadeIn(tween(300)) + expandVertically(tween(300)),
-                    exit = fadeOut(tween(200)) + shrinkVertically(tween(300))
+                    enter = fadeIn(tween(200)) + expandVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ),
+                    exit = fadeOut(tween(150)) + shrinkVertically(tween(200))
                 ) {
 
                     Box(
@@ -343,8 +339,13 @@ internal fun PlayersPager(
                         // TV expanded mode: never show FullPlayerItem
                         visible = if (isTV && showQueue) false
                         else isQueueExpanded.takeIf { showQueue } == false,
-                        enter = fadeIn(tween(300)) + expandVertically(tween(300)),
-                        exit = fadeOut(tween(200)) + shrinkVertically(tween(300))
+                        enter = fadeIn(tween(200)) + expandVertically(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ),
+                        exit = fadeOut(tween(150)) + shrinkVertically(tween(200))
                     ) {
 
                         FullPlayerItem(

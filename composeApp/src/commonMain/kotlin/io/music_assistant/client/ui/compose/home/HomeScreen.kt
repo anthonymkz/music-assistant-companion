@@ -3,7 +3,13 @@
 package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -14,6 +20,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -510,28 +517,57 @@ fun HomeScreen(
                     }
                 }
             } else {
-                // Phone: AnimatedContent for smooth slide transitions
+                // Phone: AnimatedContent with expressive spring transitions
                 AnimatedContent(
                     targetState = showPlayersView,
                     transitionSpec = {
-                        slideInVertically(
-                            initialOffsetY = { if (targetState) it else -it },
-                            animationSpec = tween(300)
-                        ) togetherWith slideOutVertically(
-                            targetOffsetY = { if (targetState) -it else it },
-                            animationSpec = tween(300)
-                        )
+                        if (targetState) {
+                            // Expanding: slide up + scale in + fade
+                            (slideInVertically(
+                                initialOffsetY = { it / 3 },
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioLowBouncy,
+                                    stiffness = Spring.StiffnessLow
+                                )
+                            ) + scaleIn(
+                                initialScale = 0.92f,
+                                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                            ) + fadeIn(
+                                animationSpec = tween(150)
+                            )) togetherWith (slideOutVertically(
+                                targetOffsetY = { -it / 4 },
+                                animationSpec = tween(200)
+                            ) + fadeOut(animationSpec = tween(150)))
+                        } else {
+                            // Collapsing: slide down + fade
+                            (slideInVertically(
+                                initialOffsetY = { -it / 4 },
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            ) + fadeIn(
+                                animationSpec = tween(200)
+                            )) togetherWith (slideOutVertically(
+                                targetOffsetY = { it / 3 },
+                                animationSpec = tween(250)
+                            ) + scaleOut(
+                                targetScale = 0.92f,
+                                animationSpec = tween(250)
+                            ) + fadeOut(animationSpec = tween(200)))
+                        }
                     },
                     label = "player_transition"
                 ) { isPlayersViewShown ->
                     if (!isPlayersViewShown) {
-                        Column(
+                        // Box layout: content fills screen, mini player overlays at bottom
+                        Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .background(MaterialTheme.colorScheme.background)
                         ) {
                             HomeContent(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxSize(),
                                 homeBackStack = homeBackStack,
                                 connectionState = connectionState,
                                 dataState = dataState,
@@ -552,17 +588,25 @@ fun HomeScreen(
                                 }
                             )
 
-                            // Mini player
+                            // Mini player — frosted glass floating overlay at bottom
                             Box(
                                 modifier = Modifier
+                                    .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
                                     .wrapContentHeight()
                                     .defaultMinSize(minHeight = 100.dp)
-                                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                                    .clickable { showPlayersView = true }
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)),
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .clickable { showPlayersView = true },
                                 contentAlignment = Alignment.Center
                             ) {
+                                // Frosted glass background: blurred tinted layer
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .blur(16.dp)
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f))
+                                )
                                 // Gradient accent line
                                 Box(
                                     modifier = Modifier
@@ -611,13 +655,15 @@ fun HomeScreen(
                                 .fillMaxSize()
                                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         ) {
-                            // Album art background
+                            // Album art background — blurred for depth
                             if (artUrl != null) {
                                 AsyncImage(
                                     model = artUrl,
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize().alpha(0.15f)
+                                    modifier = Modifier.fillMaxSize()
+                                        .blur(32.dp)
+                                        .alpha(0.2f)
                                 )
                             }
 

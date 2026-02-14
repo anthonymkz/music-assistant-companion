@@ -51,6 +51,28 @@ This project is **100% functional** and actively maintained. We sync upstream ch
 - WebView-based OAuth for TV (Chrome Custom Tabs unavailable on TV)
 - **Zero changes to the phone experience** — all TV code is gated behind `PlatformType.TV`
 
+### Material 3 Expressive UI *(New)*
+
+The original app ships with a functional but plain interface — flat backgrounds, small touch targets, and basic transitions. We've reworked the UI with Material 3 Expressive design principles for a modern, polished experience across both phone and TV:
+
+**Phone**
+- **Frosted glass floating mini player** — the now-playing bar hovers over content with a blurred, semi-transparent backdrop and rounded corners, replacing the old flat bottom bar
+- **Blurred album art background** — the expanded player uses a softly blurred album art backdrop for depth, instead of a plain solid color
+- **"MASS Companion" branded header** — custom Outfit font with bold/light weight pairing replaces the old plain text header
+- **Speaker picker chip** — a tappable Material 3 Surface with tonal elevation, speaker icon in a tinted circle, and dropdown chevron — replacing the tiny icon button
+- **Rounded mini player album art** — larger corner radii (12dp/20dp) on album art and player cards for a softer look
+- **Polished library cards** — Surface-wrapped cards with tonal elevation and rounded corners replace flat clickable columns
+- **Spring-based transitions** — expanding the player uses bouncy spring animations with scale and fade effects instead of linear slides
+
+**TV (10-foot UI)**
+- **Larger navigation rail** — 40dp logo with breathing room, better visibility from across the room
+- **Scrim gradient on expanded player** — vertical gradient overlay improves text readability over album art backgrounds
+- **Thicker progress bar** — 6dp height with 3dp rounded corners, easier to see at a distance
+- **Bigger touch/D-pad targets** — top bar icons at 40dp/24dp, volume dialog buttons at 48dp, queue album art at 56dp
+- **Current-playing queue highlight** — subtle `primaryContainer` background tint on the active track
+- **Subtler page gradients** — replaced the dated `primaryContainer` tint with neutral `surfaceContainer` gradients
+- **Volume dialog polish** — Surface-wrapped progress bar and oversized icon buttons for remote-friendly interaction
+
 ### Settings & Authentication *(Improved)*
 - Refactored section-based layout with Material3 cards
 - Fixed OAuth login flow (HomeAssistant, etc.) with retry logic
