@@ -19,6 +19,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import io.music_assistant.client.data.model.client.AppMediaItem
 import io.music_assistant.client.utils.LocalPlatformType
@@ -47,6 +53,7 @@ fun AdaptiveMediaGrid(
     gridState: LazyGridState = rememberLazyGridState(),
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
+    onItemFocused: ((AppMediaItem) -> Unit)? = null,
 ) {
     // Detect when we're near the end and trigger load more
     val shouldLoadMore by remember {
@@ -68,6 +75,7 @@ fun AdaptiveMediaGrid(
 
     val isTV = LocalPlatformType.current == PlatformType.TV
     val gridMinSize = if (isTV) 140.dp else 96.dp
+    val primaryColor = MaterialTheme.colorScheme.primary
 
     LazyVerticalGrid(
         modifier = modifier,
@@ -78,8 +86,22 @@ fun AdaptiveMediaGrid(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(items, key = { it.itemId }) { item ->
-            when (item) {
-                is AppMediaItem.Track -> TrackWithMenu(
+            var isFocused by remember { mutableStateOf(false) }
+            val focusShape = RoundedCornerShape(12.dp)
+            Box(
+                modifier = Modifier
+                    .onFocusChanged { state ->
+                        isFocused = state.hasFocus
+                        if (state.hasFocus) onItemFocused?.invoke(item)
+                    }
+                    .then(
+                        if (isTV && isFocused) Modifier
+                            .border(2.5.dp, primaryColor, focusShape)
+                        else Modifier
+                    )
+            ) {
+                when (item) {
+                    is AppMediaItem.Track -> TrackWithMenu(
                         item = item,
                         serverUrl = serverUrl,
                         onTrackPlayOption = onTrackClick,
@@ -89,57 +111,57 @@ fun AdaptiveMediaGrid(
                         providerIconFetcher = null
                     )
 
+                    is AppMediaItem.Artist -> MediaItemArtist(
+                        item = item,
+                        serverUrl = serverUrl,
+                        onClick = { onItemClick(it) },
+                        providerIconFetcher = null
+                    )
 
-                is AppMediaItem.Artist -> MediaItemArtist(
-                    item = item,
-                    serverUrl = serverUrl,
-                    onClick = { onItemClick(it) },
-                    providerIconFetcher = null
-                )
+                    is AppMediaItem.Album -> MediaItemAlbum(
+                        item = item,
+                        serverUrl = serverUrl,
+                        onClick = { onItemClick(it) },
+                        providerIconFetcher = null
+                    )
 
-                is AppMediaItem.Album -> MediaItemAlbum(
-                    item = item,
-                    serverUrl = serverUrl,
-                    onClick = { onItemClick(it) },
-                    providerIconFetcher = null
-                )
+                    is AppMediaItem.Playlist -> MediaItemPlaylist(
+                        item = item,
+                        serverUrl = serverUrl,
+                        onClick = { onItemClick(it) },
+                        providerIconFetcher = null
+                    )
 
-                is AppMediaItem.Playlist -> MediaItemPlaylist(
-                    item = item,
-                    serverUrl = serverUrl,
-                    onClick = { onItemClick(it) },
-                    providerIconFetcher = null
-                )
+                    is AppMediaItem.Podcast -> MediaItemPodcast(
+                        item = item,
+                        serverUrl = serverUrl,
+                        onClick = { onItemClick(it) },
+                        providerIconFetcher = null
+                    )
 
-                is AppMediaItem.Podcast -> MediaItemPodcast(
-                    item = item,
-                    serverUrl = serverUrl,
-                    onClick = { onItemClick(it) },
-                    providerIconFetcher = null
-                )
+                    is AppMediaItem.PodcastEpisode -> EpisodeWithMenu(
+                        item = item,
+                        serverUrl = serverUrl,
+                        onTrackPlayOption = onTrackClick,
+                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                        playlistActions = playlistActions,
+                        libraryActions = libraryActions,
+                        providerIconFetcher = null
+                    )
 
-                is AppMediaItem.PodcastEpisode -> EpisodeWithMenu(
-                    item = item,
-                    serverUrl = serverUrl,
-                    onTrackPlayOption = onTrackClick,
-                    onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = null
-                )
+                    is AppMediaItem.RadioStation -> RadioWithMenu(
+                        item = item,
+                        serverUrl = serverUrl,
+                        onTrackPlayOption = onTrackClick,
+                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                        playlistActions = playlistActions,
+                        libraryActions = libraryActions,
+                        providerIconFetcher = null
+                    )
 
-                is AppMediaItem.RadioStation -> RadioWithMenu(
-                    item = item,
-                    serverUrl = serverUrl,
-                    onTrackPlayOption = onTrackClick,
-                    onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
-                    playlistActions = playlistActions,
-                    libraryActions = libraryActions,
-                    providerIconFetcher = null
-                )
-
-                else -> {
-                    // Unsupported item type - skip
+                    else -> {
+                        // Unsupported item type - skip
+                    }
                 }
             }
         }

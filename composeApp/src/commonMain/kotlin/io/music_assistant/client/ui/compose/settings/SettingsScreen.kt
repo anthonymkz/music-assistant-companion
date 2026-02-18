@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +56,8 @@ import io.music_assistant.client.ui.compose.nav.BackHandler
 import io.music_assistant.client.ui.theme.ThemeSetting
 import io.music_assistant.client.ui.theme.ThemeViewModel
 import io.music_assistant.client.utils.DataConnectionState
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 import io.music_assistant.client.utils.SessionState
 import io.music_assistant.client.utils.isIpPort
 import io.music_assistant.client.utils.isValidHost
@@ -79,6 +83,8 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
         }
     }
 
+    val isTV = LocalPlatformType.current == PlatformType.TV
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -103,21 +109,27 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                     text = "Settings",
                     style = MaterialTheme.typography.titleLarge,
                 )
-                ThemeChooser(currentTheme = theme.value) { changedTheme ->
-                    themeViewModel.switchTheme(changedTheme)
+                if (!isTV) {
+                    ThemeChooser(currentTheme = theme.value) { changedTheme ->
+                        themeViewModel.switchTheme(changedTheme)
+                    }
                 }
             }
 
             // Content
             val scrollState = rememberScrollState()
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter
             ) {
+                Column(
+                    modifier = Modifier
+                        .then(if (isTV) Modifier.widthIn(max = 600.dp) else Modifier.fillMaxWidth())
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                 var ipAddress by remember { mutableStateOf(Defaults.URI) }
                 var port by remember { mutableStateOf(Defaults.PORT.toString()) }
                 var isTls by remember { mutableStateOf(false) }
@@ -226,6 +238,7 @@ fun SettingsScreen(goHome: () -> Unit, exitApp: () -> Unit) {
                 }
 
                 Spacer(modifier = Modifier.size(16.dp))
+                }
             }
         }
     }

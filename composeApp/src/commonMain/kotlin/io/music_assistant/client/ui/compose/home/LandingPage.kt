@@ -37,7 +37,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.border
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,7 +61,10 @@ import io.music_assistant.client.ui.compose.common.items.RadioWithMenu
 import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 import io.music_assistant.client.utils.SessionState
+import androidx.compose.ui.unit.Dp
 
 @Composable
 fun LandingPage(
@@ -69,8 +77,10 @@ fun LandingPage(
     onLibraryItemClick: (MediaType?) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)
+    providerIconFetcher: (@Composable (Modifier, String) -> Unit),
+    onItemFocused: ((AppMediaItem?) -> Unit)? = null,
 ) {
+    val isTV = LocalPlatformType.current == PlatformType.TV
     val filteredData = remember(dataState) {
         if (dataState is DataState.Data) {
             dataState.data.filter {
@@ -96,9 +106,11 @@ fun LandingPage(
         state = listState,
         contentPadding = PaddingValues(bottom = 16.dp)
     ) {
-        // Your library row
-        item {
-            LibraryRow(onLibraryItemClick = onLibraryItemClick)
+        // Your library row (TV has Library in the nav rail)
+        if (!isTV) {
+            item {
+                LibraryRow(onLibraryItemClick = onLibraryItemClick)
+            }
         }
         if (connectionState !is SessionState.Connected || dataState !is DataState.Data) {
             item {
@@ -110,6 +122,7 @@ fun LandingPage(
                 }
             }
         } else {
+            val itemSize = if (isTV) 140.dp else 96.dp
             items(
                 items = filteredData,
                 key = { it.itemId }
@@ -124,6 +137,8 @@ fun LandingPage(
                     playlistActions = playlistActions,
                     libraryActions = libraryActions,
                     providerIconFetcher = providerIconFetcher,
+                    itemSize = itemSize,
+                    onItemFocused = onItemFocused,
                 )
             }
         }
@@ -260,8 +275,12 @@ fun CategoryRow(
     mediaItems: List<AppMediaItem>,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)
+    providerIconFetcher: (@Composable (Modifier, String) -> Unit),
+    itemSize: Dp = 96.dp,
+    onItemFocused: ((AppMediaItem?) -> Unit)? = null,
 ) {
+    val isTV = LocalPlatformType.current == PlatformType.TV
+    val primaryColor = MaterialTheme.colorScheme.primary
     val isHomogenous = remember(mediaItems) {
         mediaItems.all { it::class == mediaItems.firstOrNull()?.let { first -> first::class } }
     }
@@ -324,77 +343,90 @@ fun CategoryRow(
                     }
                 }
             ) { item ->
-                when (item) {
-                    is AppMediaItem.Track -> TrackWithMenu(
-                        item = item,
-                        serverUrl = serverUrl,
-                        itemSize = 96.dp,
-                        onTrackPlayOption = onTrackPlayOption,
-                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
-                        playlistActions = playlistActions,
-                        libraryActions = libraryActions,
-                        providerIconFetcher = providerIconFetcher
-                    )
+                var isFocused by remember { mutableStateOf(false) }
+                val focusShape = RoundedCornerShape(12.dp)
+                Box(
+                    modifier = Modifier
+                        .onFocusChanged { state ->
+                            isFocused = state.hasFocus
+                            if (state.hasFocus) onItemFocused?.invoke(item)
+                        }
+                        .then(
+                            if (isTV && isFocused) Modifier.border(2.5.dp, primaryColor, focusShape)
+                            else Modifier
+                        )
+                ) {
+                    when (item) {
+                        is AppMediaItem.Track -> TrackWithMenu(
+                            item = item,
+                            serverUrl = serverUrl,
+                            itemSize = itemSize,
+                            onTrackPlayOption = onTrackPlayOption,
+                            onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                            playlistActions = playlistActions,
+                            libraryActions = libraryActions,
+                            providerIconFetcher = providerIconFetcher
+                        )
 
+                        is AppMediaItem.Artist -> MediaItemArtist(
+                            item = item,
+                            serverUrl = serverUrl,
+                            onClick = { onItemClick(it) },
+                            itemSize = itemSize,
+                            showSubtitle = !isHomogenous,
+                            providerIconFetcher = providerIconFetcher
+                        )
 
-                    is AppMediaItem.Artist -> MediaItemArtist(
-                        item = item,
-                        serverUrl = serverUrl,
-                        onClick = { onItemClick(it) },
-                        itemSize = 96.dp,
-                        showSubtitle = !isHomogenous,
-                        providerIconFetcher = providerIconFetcher
-                    )
+                        is AppMediaItem.Album -> MediaItemAlbum(
+                            item = item,
+                            serverUrl = serverUrl,
+                            onClick = { onItemClick(it) },
+                            itemSize = itemSize,
+                            providerIconFetcher = providerIconFetcher
+                        )
 
-                    is AppMediaItem.Album -> MediaItemAlbum(
-                        item = item,
-                        serverUrl = serverUrl,
-                        onClick = { onItemClick(it) },
-                        itemSize = 96.dp,
-                        providerIconFetcher = providerIconFetcher
-                    )
+                        is AppMediaItem.Playlist -> MediaItemPlaylist(
+                            item = item,
+                            serverUrl = serverUrl,
+                            onClick = { onItemClick(it) },
+                            itemSize = itemSize,
+                            showSubtitle = !isHomogenous,
+                            providerIconFetcher = providerIconFetcher
+                        )
 
-                    is AppMediaItem.Playlist -> MediaItemPlaylist(
-                        item = item,
-                        serverUrl = serverUrl,
-                        onClick = { onItemClick(it) },
-                        itemSize = 96.dp,
-                        showSubtitle = !isHomogenous,
-                        providerIconFetcher = providerIconFetcher
-                    )
+                        is AppMediaItem.Podcast -> MediaItemPodcast(
+                            item = item,
+                            serverUrl = serverUrl,
+                            onClick = { onItemClick(it) },
+                            itemSize = itemSize,
+                            showSubtitle = !isHomogenous,
+                            providerIconFetcher = providerIconFetcher
+                        )
 
-                    is AppMediaItem.Podcast -> MediaItemPodcast(
-                        item = item,
-                        serverUrl = serverUrl,
-                        onClick = { onItemClick(it) },
-                        itemSize = 96.dp,
-                        showSubtitle = !isHomogenous,
-                        providerIconFetcher = providerIconFetcher
-                    )
+                        is AppMediaItem.PodcastEpisode -> EpisodeWithMenu(
+                            item = item,
+                            serverUrl = serverUrl,
+                            itemSize = itemSize,
+                            onTrackPlayOption = onTrackPlayOption,
+                            onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                            playlistActions = playlistActions,
+                            libraryActions = libraryActions,
+                            providerIconFetcher = providerIconFetcher
+                        )
 
-                    is AppMediaItem.PodcastEpisode -> EpisodeWithMenu(
-                        item = item,
-                        serverUrl = serverUrl,
-                        itemSize = 96.dp,
-                        onTrackPlayOption = onTrackPlayOption,
-                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
-                        playlistActions = playlistActions,
-                        libraryActions = libraryActions,
-                        providerIconFetcher = providerIconFetcher
-                    )
+                        is AppMediaItem.RadioStation -> RadioWithMenu(
+                            item = item,
+                            serverUrl = serverUrl,
+                            itemSize = itemSize,
+                            onTrackPlayOption = onTrackPlayOption,
+                            onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
+                            playlistActions = playlistActions,
+                            libraryActions = libraryActions,
+                            providerIconFetcher = providerIconFetcher
+                        )
 
-                    is AppMediaItem.RadioStation -> RadioWithMenu(
-                        item = item,
-                        serverUrl = serverUrl,
-                        itemSize = 96.dp,
-                        onTrackPlayOption = onTrackPlayOption,
-                        onItemClick = { (it as? AppMediaItem)?.let { i -> onItemClick(i) } },
-                        playlistActions = playlistActions,
-                        libraryActions = libraryActions,
-                        providerIconFetcher = providerIconFetcher
-                    )
-
-                    else -> {}
+                        else -> {}
+                    }
                 }
             }
         }

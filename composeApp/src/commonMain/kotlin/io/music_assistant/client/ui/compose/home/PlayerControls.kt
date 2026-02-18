@@ -45,8 +45,8 @@ fun PlayerControls(
     val player = playerData.player
     val queue = playerData.queueInfo
     val buttonsEnabled = queue?.currentItem?.isPlayable == true
-    val smallButtonSize = (effectiveMainButtonSize.value * 0.6).dp
-    val additionalButtonSize = (effectiveMainButtonSize.value * 0.4).dp
+    val smallButtonSize = (effectiveMainButtonSize.value * if (isTV) 0.7 else 0.6).dp
+    val additionalButtonSize = (effectiveMainButtonSize.value * if (isTV) 0.5 else 0.4).dp
     Row(
         modifier = modifier
             .wrapContentSize(),

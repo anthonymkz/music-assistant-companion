@@ -54,6 +54,8 @@ import io.music_assistant.client.ui.compose.common.OverflowMenu
 import io.music_assistant.client.ui.compose.common.OverflowMenuOption
 import io.music_assistant.client.ui.compose.common.action.QueueAction
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 import io.music_assistant.client.utils.conditional
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -71,6 +73,7 @@ fun CollapsibleQueue(
     players: List<PlayerData> = emptyList(),
     onPlayerSelected: ((String) -> Unit)? = null,
     isCurrentPage: Boolean = true,
+    showToggleButton: Boolean = true,
 ) {
     Column(
         modifier = modifier
@@ -78,21 +81,27 @@ fun CollapsibleQueue(
             .padding(start = 16.dp, end = 16.dp, bottom = if (isQueueExpanded) 0.dp else 16.dp)
             .animateContentSize(),
     ) {
-        Button(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = { onQueueExpandedSwitch() }
-        ) {
-            Text(
-                text = "Queue",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Icon(
-                imageVector = if (isQueueExpanded) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
-                contentDescription = "Toggle Queue"
-            )
+        val isTV = LocalPlatformType.current == PlatformType.TV
+        val pillShape = RoundedCornerShape(50)
+
+        if (showToggleButton) {
+            Button(
+                modifier = if (isTV) Modifier else Modifier.fillMaxWidth(),
+                shape = if (isTV) pillShape else MaterialTheme.shapes.medium,
+                onClick = { onQueueExpandedSwitch() }
+            ) {
+                Text(
+                    text = "Queue",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Icon(
+                    imageVector = if (isQueueExpanded) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
+                    contentDescription = "Toggle Queue"
+                )
+            }
         }
 
         // Action buttons (visible when expanded and has items)
@@ -111,7 +120,10 @@ fun CollapsibleQueue(
                 OverflowMenu(
                     modifier = Modifier,
                     buttonContent = {
-                        OutlinedButton(onClick = it) {
+                        OutlinedButton(
+                            onClick = it,
+                            shape = if (isTV) pillShape else MaterialTheme.shapes.medium,
+                        ) {
                             Text("Transfer")
                         }
                     },
@@ -141,7 +153,8 @@ fun CollapsibleQueue(
 
                 // Clear button
                 OutlinedButton(
-                    onClick = { queueAction(QueueAction.ClearQueue(queueId)) }
+                    onClick = { queueAction(QueueAction.ClearQueue(queueId)) },
+                    shape = if (isTV) pillShape else MaterialTheme.shapes.medium,
                 ) {
                     Text("Clear")
                 }

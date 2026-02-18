@@ -55,6 +55,8 @@ import io.music_assistant.client.ui.compose.common.items.TrackWithMenu
 import io.music_assistant.client.ui.compose.common.providers.ProviderIcon
 import io.music_assistant.client.ui.compose.common.rememberToastState
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -126,12 +128,15 @@ private fun SearchContent(
     providerIconFetcher: (@Composable (Modifier, String) -> Unit),
 ) {
     val focusManager = LocalFocusManager.current
+    val isTV = LocalPlatformType.current == PlatformType.TV
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Back button
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                // Back button (phone only)
+                if (!isTV) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    }
                 }
                 // Search input
                 OutlinedTextField(

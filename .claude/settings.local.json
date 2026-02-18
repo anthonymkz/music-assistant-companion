@@ -17,7 +17,12 @@
       "Bash(find:*)",
       "Bash(gh pr view:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(export JAVA_HOME=\"/c/Users/anthony/jdk-17.0.18+8\":*)",
+      "Bash(export ANDROID_HOME=\"/c/Users/anthony/Android/Sdk\")",
+      "Bash(adb:*)",
+      "Bash(\"$ANDROID_HOME/platform-tools/adb\" connect 192.168.0.127:5555)",
+      "Bash(\"$ANDROID_HOME/platform-tools/adb\" -s 192.168.0.127:5555 install -r /c/Users/anthony/music-assistant-companion/composeApp/build/outputs/apk/debug/composeApp-debug.apk)"
     ]
   }
 }

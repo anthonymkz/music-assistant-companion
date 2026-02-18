@@ -56,6 +56,8 @@ import io.music_assistant.client.data.model.client.AppMediaItem.Companion.descri
 import io.music_assistant.client.data.model.client.PlayerData
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
 import io.music_assistant.client.ui.compose.common.painters.rememberPlaceholderPainter
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 import io.music_assistant.client.utils.formatDuration
 import kotlin.time.DurationUnit
 
@@ -68,6 +70,8 @@ fun CompactPlayerItem(
     val track = item.queueInfo?.currentItem?.track
     val primaryContainer = MaterialTheme.colorScheme.primaryContainer
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
+    val isTV = LocalPlatformType.current == PlatformType.TV
+    val artSize = if (isTV) 80.dp else 64.dp
 
     Column(
         modifier = Modifier
@@ -81,7 +85,7 @@ fun CompactPlayerItem(
             // Album cover on the far left
             Box(
                 modifier = Modifier
-                    .size(64.dp)
+                    .size(artSize)
                     .clip(RoundedCornerShape(12.dp))
                     .background(primaryContainer.copy(alpha = track?.let { 1f } ?: 0.4f)),
                 contentAlignment = Alignment.Center
@@ -116,7 +120,7 @@ fun CompactPlayerItem(
             ) {
                 Text(
                     text = track?.name ?: "--idle--",
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = if (isTV) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
@@ -125,7 +129,7 @@ fun CompactPlayerItem(
                 track?.subtitle?.let {
                     Text(
                         text = it,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = if (isTV) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -169,6 +173,8 @@ fun FullPlayerItem(
     val onPrimaryContainer = MaterialTheme.colorScheme.onPrimaryContainer
 
     var showGroupDialog by remember { mutableStateOf(false) }
+    val isTV = LocalPlatformType.current == PlatformType.TV
+    val pillShape = RoundedCornerShape(50)
 
     // Group dialog
     if (showGroupDialog) {
@@ -182,7 +188,9 @@ fun FullPlayerItem(
                     // Non-scrollable Done button at top
                     OutlinedButton(
                         onClick = { showGroupDialog = false },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        modifier = if (isTV) Modifier.padding(bottom = 8.dp)
+                            else Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        shape = if (isTV) pillShape else MaterialTheme.shapes.medium,
                     ) {
                         Text("Done")
                     }
@@ -249,6 +257,7 @@ fun FullPlayerItem(
                 item.groupChildren.isEmpty() ->
                     OutlinedButton(
                         enabled = false,
+                        shape = if (isTV) pillShape else MaterialTheme.shapes.medium,
                         onClick = {}) {
                         Text("No group options")
                     }
@@ -256,13 +265,18 @@ fun FullPlayerItem(
                 item.groupChildren.none { it.isBound } ->
                     OutlinedButton(
                         enabled = true,
+                        shape = if (isTV) pillShape else MaterialTheme.shapes.medium,
                         onClick = { showGroupDialog = true }
                     ) {
                         Text("Group")
                     }
 
                 else ->
-                    Button(enabled = true, onClick = { showGroupDialog = true }) {
+                    Button(
+                        enabled = true,
+                        shape = if (isTV) pillShape else MaterialTheme.shapes.medium,
+                        onClick = { showGroupDialog = true }
+                    ) {
                         Text("Manage group")
                     }
             }

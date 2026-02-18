@@ -2,15 +2,19 @@
 
 package io.music_assistant.client.ui.compose.library
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -35,6 +39,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import compose.icons.TablerIcons
@@ -47,6 +53,8 @@ import io.music_assistant.client.ui.compose.common.DataState
 import io.music_assistant.client.ui.compose.common.ToastHost
 import io.music_assistant.client.ui.compose.common.rememberToastState
 import io.music_assistant.client.ui.compose.common.viewmodel.ActionsViewModel
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 import org.koin.compose.koinInject
 
 @Composable
@@ -54,6 +62,7 @@ fun LibraryScreen(
     initialTabType: MediaType?,
     onBack: () -> Unit,
     onItemClick: (AppMediaItem) -> Unit,
+    onFocusedItemChanged: ((AppMediaItem?) -> Unit)? = null,
 ) {
     val viewModel: LibraryViewModel = koinInject()
     val actionsViewModel: ActionsViewModel = koinInject()
@@ -107,6 +116,7 @@ fun LibraryScreen(
             onLibraryClick = actionsViewModel::onLibraryClick,
             onFavoriteClick = actionsViewModel::onFavoriteClick
         ),
+        onFocusedItemChanged = onFocusedItemChanged,
     )
 }
 
@@ -127,20 +137,30 @@ private fun Library(
     onCreatePlaylist: (String) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
+    onFocusedItemChanged: ((AppMediaItem?) -> Unit)? = null,
 ) {
     val selectedTab = state.tabs.find { it.isSelected } ?: state.tabs.first()
+    val isTV = LocalPlatformType.current == PlatformType.TV
+
+    // Reset context when tab changes (TV only)
+    LaunchedEffect(selectedTab.tab) {
+        onFocusedItemChanged?.invoke(null)
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
         ) {
-            Row {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!isTV) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
                 }
                 // Tab row
                 ScrollableTabRow(
+                    modifier = Modifier.weight(1f),
                     selectedTabIndex = state.tabs.indexOfFirst { it.isSelected }
                 ) {
                     state.tabs.forEach { tabState ->
@@ -162,30 +182,44 @@ private fun Library(
                         )
                     }
                 }
+                // TV: Favorites chip inline with tabs
+                if (isTV) {
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip(
+                        modifier = Modifier.padding(end = 16.dp),
+                        selected = selectedTab.onlyFavorites,
+                        onClick = { onOnlyFavoritesClicked(selectedTab.tab) },
+                        label = { Text("Favorites") }
+                    )
+                }
             }
 
-            // Quick search input
-            OutlinedTextField(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                value = selectedTab.searchQuery,
-                onValueChange = { onSearchQueryChanged(selectedTab.tab, it) },
-                label = {
-                    Text(text = "Quick search")
-                },
-                singleLine = true
-            )
-            FilterChip(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                selected = selectedTab.onlyFavorites,
-                onClick = { onOnlyFavoritesClicked(selectedTab.tab) },
-                label = {
-                    Text("Favorites")
-                }
-            )
+            // Quick search input (TV uses the Search tab instead)
+            if (!isTV) {
+                OutlinedTextField(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    value = selectedTab.searchQuery,
+                    onValueChange = { onSearchQueryChanged(selectedTab.tab, it) },
+                    label = {
+                        Text(text = "Quick search")
+                    },
+                    singleLine = true
+                )
+            }
+            if (!isTV) {
+                FilterChip(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    selected = selectedTab.onlyFavorites,
+                    onClick = { onOnlyFavoritesClicked(selectedTab.tab) },
+                    label = {
+                        Text("Favorites")
+                    }
+                )
+            }
 
-            // Content area
+            // Content area (no TvLibraryStickyHeader — TvTopHeader handles context art)
             Box(modifier = Modifier.fillMaxSize()) {
                 TabContent(
                     tabState = selectedTab,
@@ -196,7 +230,24 @@ private fun Library(
                     onLoadMore = { onLoadMore(selectedTab.tab) },
                     playlistActions = playlistActions,
                     libraryActions = libraryActions,
+                    onItemFocused = if (isTV) { item ->
+                        onFocusedItemChanged?.invoke(item)
+                    } else null,
                 )
+                // Soft fade overlay at top (TV only)
+                if (isTV) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(24.dp)
+                            .align(Alignment.TopCenter)
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(MaterialTheme.colorScheme.background, Color.Transparent)
+                                )
+                            )
+                    )
+                }
             }
         }
 
@@ -266,6 +317,7 @@ private fun TabContent(
     onLoadMore: () -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
+    onItemFocused: ((AppMediaItem) -> Unit)? = null,
 ) {
     // Create separate grid states for each tab to preserve scroll position
     val artistsGridState = rememberLazyGridState()
@@ -302,13 +354,15 @@ private fun TabContent(
             if (items.isEmpty()) {
                 EmptyState()
             } else {
+                val isTV = LocalPlatformType.current == PlatformType.TV
                 key(tabState.tab) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         if (tabState.tab == LibraryViewModel.Tab.PLAYLISTS) {
                             OutlinedButton(
                                 modifier = Modifier
-                                    .fillMaxWidth()
+                                    .then(if (isTV) Modifier else Modifier.fillMaxWidth())
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
+                                shape = if (isTV) RoundedCornerShape(50) else MaterialTheme.shapes.medium,
                                 onClick = onCreatePlaylistClick
                             ) {
                                 Icon(TablerIcons.Plus, contentDescription = "Add playlist")
@@ -329,6 +383,7 @@ private fun TabContent(
                                 gridState = it,
                                 playlistActions = playlistActions,
                                 libraryActions = libraryActions,
+                                onItemFocused = onItemFocused,
                             )
                         }
 

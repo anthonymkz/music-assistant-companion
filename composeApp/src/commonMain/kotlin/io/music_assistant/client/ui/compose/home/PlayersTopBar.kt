@@ -56,11 +56,11 @@ fun PlayersTopBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
-            modifier = Modifier.size(if (isTV) 40.dp else 32.dp),
+            modifier = Modifier.size(if (isTV) 48.dp else 32.dp),
             onClick = onPlayersRefreshClick
         ) {
             Icon(
-                modifier = Modifier.size(if (isTV) 24.dp else 20.dp),
+                modifier = Modifier.size(if (isTV) 28.dp else 20.dp),
                 imageVector = Icons.Default.Refresh,
                 contentDescription = "Refresh players",
                 tint = MaterialTheme.colorScheme.primary,
@@ -68,56 +68,82 @@ fun PlayersTopBar(
         }
 
         if (isTV) {
-            // On TV: show current speaker name + selector button + expand button
-            var showSpeakerDialog by remember { mutableStateOf(false) }
-            val currentPlayer = playerDataList.getOrNull(playerPagerState.currentPage)
+            Spacer(Modifier.width(4.dp))
 
-            Text(
-                text = currentPlayer?.player?.displayName ?: "No player",
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            // TV: consolidated speaker chip using OverflowMenu (matches phone pattern)
+            OverflowMenu(
+                modifier = Modifier.weight(1f),
+                buttonContent = { onClick ->
+                    Surface(
+                        onClick = onClick,
+                        shape = RoundedCornerShape(16.dp),
+                        tonalElevation = 2.dp,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // Speaker icon in a tinted circle
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    modifier = Modifier.size(20.dp),
+                                    imageVector = Icons.Filled.Speaker,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = playerDataList.getOrNull(playerPagerState.currentPage)
+                                    ?.player?.displayName ?: "Speaker",
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            if (playerDataList.size > 1) {
+                                Spacer(Modifier.width(4.dp))
+                                Icon(
+                                    modifier = Modifier.size(24.dp),
+                                    imageVector = Icons.Default.ExpandMore,
+                                    contentDescription = "Select speaker",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                },
+                options = playerDataList.map { data ->
+                    val isLocalPlayer = data.playerId == playersState.localPlayerId
+                    OverflowMenuOption(
+                        title = data.player.displayName + (if (isLocalPlayer) " (local)" else "")
+                    ) {
+                        onMoveToPlayer(data.player.id)
+                    }
+                }
             )
-
-            IconButton(
-                modifier = Modifier.size(40.dp),
-                onClick = { showSpeakerDialog = true }
-            ) {
-                Icon(
-                    modifier = Modifier.size(24.dp),
-                    imageVector = Icons.Default.Speaker,
-                    contentDescription = "Select speaker",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
 
             if (onExpandClick != null) {
                 IconButton(
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(48.dp),
                     onClick = onExpandClick
                 ) {
                     Icon(
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(28.dp),
                         imageVector = Icons.Default.OpenInFull,
                         contentDescription = "Expand player",
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
-            }
-
-            if (showSpeakerDialog) {
-                SpeakerSelectorDialog(
-                    players = playerDataList,
-                    currentPlayerIndex = playerPagerState.currentPage,
-                    localPlayerId = playersState.localPlayerId,
-                    onPlayerSelected = { playerId ->
-                        onMoveToPlayer(playerId)
-                        showSpeakerDialog = false
-                    },
-                    onDismiss = { showSpeakerDialog = false }
-                )
             }
         } else {
             Spacer(Modifier.width(4.dp))

@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -127,9 +128,10 @@ internal fun PlayersPager(
         .conditional(tvFocusRequester != null, ifTrue = { focusRequester(tvFocusRequester!!) })
         .conditional(isTV, ifTrue = { focusGroup() })
     ) {
-        if (isTV) {
-            // TV: wrap top bar in a focusGroup with Down key interception
-            // to explicitly jump focus into the pager content
+        if (isTV && !showQueue) {
+            // TV mini mode: wrap top bar in a focusGroup with Down key interception
+            // to explicitly jump focus into the pager content.
+            // In expanded mode (showQueue), skip the top bar entirely — HomeScreen handles it.
             Box(
                 modifier = Modifier
                     .focusRequester(topBarAreaFocusRequester)
@@ -163,7 +165,7 @@ internal fun PlayersPager(
                     onExpandClick = onExpandClick,
                 ) { moveToPlayer(it) }
             }
-        } else {
+        } else if (!isTV) {
             PlayersTopBar(
                 playerDataList = playerDataList,
                 playersState = playersState,
@@ -235,110 +237,9 @@ internal fun PlayersPager(
                         ifTrue = { background(brush = pageBrush) }
                     )
             ) {
-                // Player name — only show on TV (phone shows it in the top bar picker)
-                if (isTV) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            modifier = Modifier.align(Alignment.Center),
-                            text = player.player.displayName + (if (isLocalPlayer) " (local)" else ""),
-                            style = MaterialTheme.typography.bodyLarge,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                AnimatedVisibility(
-                    // TV expanded mode: always show CompactPlayerItem
-                    // (FullPlayerItem's progress Slider traps D-pad focus)
-                    visible = if (isTV && showQueue) true
-                    else isQueueExpanded.takeIf { showQueue } != false,
-                    enter = fadeIn(tween(200)) + expandVertically(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    ),
-                    exit = fadeOut(tween(150)) + shrinkVertically(tween(200))
-                ) {
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .wrapContentSize()
-                            .conditional(
-                                showQueue && !isTV,
-                                { clickable { onQueueExpandedSwitch() } }
-                            )
-                    ) {
-                        CompactPlayerItem(
-                            item = player,
-                            serverUrl = serverUrl,
-                            playerAction = playerAction,
-                        )
-                    }
-                }
-
-                // TV expanded: non-interactive progress bar + time labels
-                if (isTV && showQueue) {
-                    val track = player.queueInfo?.currentItem?.track
-                    val duration = track?.duration?.takeIf { it > 0 }?.toFloat()
-                    val elapsed = player.queueInfo?.elapsedTime?.toFloat() ?: 0f
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        LinearProgressIndicator(
-                            progress = {
-                                if (duration != null && duration > 0f)
-                                    (elapsed / duration).coerceIn(0f, 1f)
-                                else 0f
-                            },
-                            modifier = Modifier.fillMaxWidth().height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = elapsed.takeIf { track != null }
-                                    .formatDuration(DurationUnit.SECONDS)
-                                    .takeIf { duration != null } ?: "",
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = track?.let {
-                                    duration?.formatDuration(DurationUnit.SECONDS) ?: "\u221E"
-                                } ?: "",
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                Column(
-                    modifier = Modifier
-                        .conditional(
-                            condition = if (isTV && showQueue) false
-                            else isQueueExpanded.takeIf { showQueue } == false,
-                            ifTrue = { weight(1f) },
-                            ifFalse = { wrapContentHeight() }
-                        )
-                ) {
+                    // Phone or TV mini mode: existing layout
                     AnimatedVisibility(
-                        // TV expanded mode: never show FullPlayerItem
-                        visible = if (isTV && showQueue) false
-                        else isQueueExpanded.takeIf { showQueue } == false,
+                        visible = isQueueExpanded.takeIf { showQueue } != false,
                         enter = fadeIn(tween(200)) + expandVertically(
                             animationSpec = spring(
                                 dampingRatio = Spring.DampingRatioLowBouncy,
@@ -347,61 +248,59 @@ internal fun PlayersPager(
                         ),
                         exit = fadeOut(tween(150)) + shrinkVertically(tween(200))
                     ) {
-
-                        FullPlayerItem(
-                            modifier = Modifier.fillMaxSize(),
-                            item = player,
-                            isLocal = isLocalPlayer,
-                            serverUrl = serverUrl,
-                            simplePlayerAction = simplePlayerAction,
-                            playerAction = playerAction,
-                            onFavoriteClick = onFavoriteClick,
-                        )
-                    }
-                }
-
-                if (
-                    showQueue
-                    && player.player.canSetVolume
-                    && player.player.currentVolume != null
-                ) {
-                    if (isTV && !isLocalPlayer) {
-                        // TV: volume button that opens a dialog with +/- controls
-                        var showVolumeDialog by remember { mutableStateOf(false) }
-                        val volumeLevel = player.player.currentVolume ?: 0f
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth().height(36.dp)
-                                .padding(horizontal = 64.dp)
-                                .clickable { showVolumeDialog = true },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentSize()
+                                .conditional(
+                                    showQueue && !isTV,
+                                    { clickable { onQueueExpandedSwitch() } }
+                                )
                         ) {
-                            Icon(
-                                modifier = Modifier.size(24.dp),
-                                imageVector = if (player.player.volumeMuted)
-                                    Icons.AutoMirrored.Filled.VolumeMute
-                                else
-                                    Icons.AutoMirrored.Filled.VolumeUp,
-                                contentDescription = "Volume",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                modifier = Modifier.padding(start = 8.dp),
-                                text = "${volumeLevel.toInt()}%",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        if (showVolumeDialog) {
-                            VolumeDialog(
-                                player = player,
+                            CompactPlayerItem(
+                                item = player,
+                                serverUrl = serverUrl,
                                 playerAction = playerAction,
-                                onDismiss = { showVolumeDialog = false }
                             )
                         }
-                    } else if (!isLocalPlayer) {
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .conditional(
+                                condition = isQueueExpanded.takeIf { showQueue } == false,
+                                ifTrue = { weight(1f) },
+                                ifFalse = { wrapContentHeight() }
+                            )
+                    ) {
+                        AnimatedVisibility(
+                            visible = isQueueExpanded.takeIf { showQueue } == false,
+                            enter = fadeIn(tween(200)) + expandVertically(
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioLowBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            ),
+                            exit = fadeOut(tween(150)) + shrinkVertically(tween(200))
+                        ) {
+                            FullPlayerItem(
+                                modifier = Modifier.fillMaxSize(),
+                                item = player,
+                                isLocal = isLocalPlayer,
+                                serverUrl = serverUrl,
+                                simplePlayerAction = simplePlayerAction,
+                                playerAction = playerAction,
+                                onFavoriteClick = onFavoriteClick,
+                            )
+                        }
+                    }
+
+                    if (
+                        showQueue
+                        && player.player.canSetVolume
+                        && player.player.currentVolume != null
+                        && !isLocalPlayer
+                    ) {
                         // Phone: existing volume slider
                         var currentVolume by remember(player.player.currentVolume) {
                             mutableStateOf(player.player.currentVolume)
@@ -461,7 +360,10 @@ internal fun PlayersPager(
                                 }
                             )
                         }
-                    } else {
+                    } else if (
+                        showQueue
+                        && isLocalPlayer
+                    ) {
                         Text(
                             modifier = Modifier.fillMaxWidth().height(36.dp),
                             text = "use device buttons to adjust the volume",
@@ -470,31 +372,30 @@ internal fun PlayersPager(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
                     }
-                }
 
-                Spacer(modifier = Modifier.fillMaxWidth().height(8.dp))
+                    Spacer(modifier = Modifier.fillMaxWidth().height(8.dp))
 
-                player.queue.takeIf { showQueue }?.let { queue ->
-                    CollapsibleQueue(
-                        modifier = Modifier
-                            .conditional(
-                                condition = isQueueExpanded,
-                                ifTrue = { weight(1f) },
-                                ifFalse = { wrapContentHeight() }
-                            ),
-                        queue = queue,
-                        isQueueExpanded = isQueueExpanded,
-                        onQueueExpandedSwitch = { onQueueExpandedSwitch() },
-                        onGoToLibrary = onGoToLibrary,
-                        serverUrl = serverUrl,
-                        queueAction = queueAction,
-                        players = playerDataList,
-                        onPlayerSelected = { playerId ->
-                            moveToPlayer(playerId)
-                        },
-                        isCurrentPage = page == playerPagerState.currentPage
-                    )
-                }
+                    player.queue.takeIf { showQueue }?.let { queue ->
+                        CollapsibleQueue(
+                            modifier = Modifier
+                                .conditional(
+                                    condition = isQueueExpanded,
+                                    ifTrue = { weight(1f) },
+                                    ifFalse = { wrapContentHeight() }
+                                ),
+                            queue = queue,
+                            isQueueExpanded = isQueueExpanded,
+                            onQueueExpandedSwitch = { onQueueExpandedSwitch() },
+                            onGoToLibrary = onGoToLibrary,
+                            serverUrl = serverUrl,
+                            queueAction = queueAction,
+                            players = playerDataList,
+                            onPlayerSelected = { playerId ->
+                                moveToPlayer(playerId)
+                            },
+                            isCurrentPage = page == playerPagerState.currentPage
+                        )
+                    }
             }
         }
 
@@ -502,7 +403,7 @@ internal fun PlayersPager(
 }
 
 @Composable
-private fun VolumeDialog(
+internal fun VolumeDialog(
     player: PlayerData,
     playerAction: (PlayerData, PlayerAction) -> Unit,
     onDismiss: () -> Unit,
@@ -510,6 +411,9 @@ private fun VolumeDialog(
     var currentVolume by remember(player.player.currentVolume) {
         mutableStateOf(player.player.currentVolume ?: 0f)
     }
+
+    val primary = MaterialTheme.colorScheme.primary
+    val borderShape = RoundedCornerShape(12.dp)
 
     fun setVolume(newVolume: Float) {
         currentVolume = newVolume.coerceIn(0f, 100f)
@@ -525,53 +429,53 @@ private fun VolumeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Volume") },
+        title = null,
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
+                // Large centered percentage
                 Text(
                     text = "${currentVolume.toInt()}%",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    LinearProgressIndicator(
-                        progress = { (currentVolume / 100f).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().height(8.dp)
-                            .padding(horizontal = 4.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    )
-                }
+                // Progress bar
+                LinearProgressIndicator(
+                    progress = { (currentVolume / 100f).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
 
+                // Controls row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(52.dp)
+                            .border(1.5.dp, primary.copy(alpha = 0.5f), borderShape)
+                            .clip(borderShape),
                         onClick = { setVolume(currentVolume - 5f) }
                     ) {
                         Icon(
                             imageVector = Icons.Default.Remove,
                             contentDescription = "Volume down",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = primary
                         )
                     }
 
                     IconButton(
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(52.dp)
+                            .border(1.5.dp, primary.copy(alpha = 0.5f), borderShape)
+                            .clip(borderShape),
                         onClick = { playerAction(player, PlayerAction.ToggleMute) },
                         enabled = player.player.canMute
                     ) {
@@ -581,27 +485,36 @@ private fun VolumeDialog(
                             else
                                 Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = "Toggle mute",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = primary
                         )
                     }
 
                     IconButton(
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(52.dp)
+                            .border(1.5.dp, primary.copy(alpha = 0.5f), borderShape)
+                            .clip(borderShape),
                         onClick = { setVolume(currentVolume + 5f) }
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "Volume up",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = primary
                         )
                     }
                 }
+
+                // Done button
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .border(1.5.dp, primary, borderShape)
+                        .clip(borderShape)
+                        .padding(horizontal = 24.dp)
+                ) {
+                    Text("Done", color = primary)
+                }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Done")
-            }
-        },
+        confirmButton = {},
     )
 }

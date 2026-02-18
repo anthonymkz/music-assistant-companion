@@ -3,6 +3,7 @@
 package io.music_assistant.client.ui.compose.home
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -16,6 +17,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +26,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
 import io.music_assistant.client.ui.compose.common.action.PlayerAction
@@ -41,15 +44,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeMute
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -60,16 +71,19 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalUriHandler
@@ -105,7 +119,10 @@ import io.music_assistant.client.utils.LocalPlatformType
 import io.music_assistant.client.utils.PlatformType
 import io.music_assistant.client.utils.SessionState
 import io.music_assistant.client.utils.conditional
+import io.music_assistant.client.utils.formatDuration
+import kotlin.time.DurationUnit
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import musicassistantclient.composeapp.generated.resources.Res
 import musicassistantclient.composeapp.generated.resources.mass
 import org.jetbrains.compose.resources.painterResource
@@ -137,9 +154,8 @@ fun HomeScreen(
     var showPlayersView by remember { mutableStateOf(false) }
     var isQueueExpanded by remember { mutableStateOf(false) }
 
-    // Focus requesters for TV quick-navigation
-    val miniPlayerFocusRequester = remember { FocusRequester() }
-    val railFocusRequester = remember { FocusRequester() }
+    // Focus requester for TV header nav tabs
+    val headerFocusRequester = remember { FocusRequester() }
 
     val recommendationsState = viewModel.recommendationsState.collectAsStateWithLifecycle()
     val serverUrl by viewModel.serverUrl.collectAsStateWithLifecycle()
@@ -154,17 +170,28 @@ fun HomeScreen(
     // Nested navigation backstack - hoisted to survive player view transitions
     val homeBackStack = rememberHomeNavBackStack()
 
-    // TV rail: derive which destination is selected from the back stack
+    // TV header context item — tracks the focused/selected item from child screens
+    var tvContextItem by remember { mutableStateOf<AppMediaItem?>(null) }
+
+    // TV header: derive which destination is selected from the back stack
     @Suppress("UNCHECKED_CAST")
-    val currentRailDestination by remember(homeBackStack, showPlayersView) {
+    val currentRailDestination by remember(homeBackStack) {
         derivedStateOf {
-            if (showPlayersView) TvNavDestination.NowPlaying
-            else when (homeBackStack.last()) {
+            when (homeBackStack.last()) {
                 is HomeNavScreen.Library -> TvNavDestination.Library
                 is HomeNavScreen.Search -> TvNavDestination.Search
                 is HomeNavScreen.Landing -> TvNavDestination.Home
                 else -> TvNavDestination.Home // ItemDetails keeps current context
             }
+        }
+    }
+
+    // Clear context item when navigating to a different destination
+    LaunchedEffect(currentRailDestination) {
+        if (currentRailDestination == TvNavDestination.Home ||
+            currentRailDestination == TvNavDestination.Search
+        ) {
+            tvContextItem = null
         }
     }
 
@@ -190,7 +217,7 @@ fun HomeScreen(
                         Key.Menu -> {
                             if (!showPlayersView) {
                                 try {
-                                    railFocusRequester.requestFocus()
+                                    headerFocusRequester.requestFocus()
                                 } catch (_: Exception) {
                                 }
                             }
@@ -281,57 +308,47 @@ fun HomeScreen(
         val dataState = recommendationsState.value.recommendations
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             if (isTV) {
-                // TV: if/else to prevent focus leak between home and expanded player.
-                if (!showPlayersView) {
-                    // Main layout: left navigation rail + content + mini player
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.background)
-                    ) {
+                val hasPlayers = data?.playerData?.isNotEmpty() == true
+                // Local TV player index — avoids race condition in ViewModel where
+                // selectedPlayerIndex resets when playersData re-emits
+                var tvPlayerIndex by remember { mutableStateOf(data?.selectedPlayerIndex ?: 0) }
+
+                // Derive context art/title/subtitle from focused item, fallback to now-playing
+                val currentPlayerData = data?.playerData?.getOrNull(tvPlayerIndex)
+                val contextArtUrl = tvContextItem?.imageInfo?.url(serverUrl)
+                    ?: currentPlayerData?.queueInfo?.currentItem?.track?.imageInfo?.url(serverUrl)
+                val contextTitle = tvContextItem?.name
+                    ?: currentPlayerData?.queueInfo?.currentItem?.track?.name
+                val contextSubtitle = tvContextItem?.subtitle
+                    ?: currentPlayerData?.queueInfo?.currentItem?.track?.subtitle
+
+                // TV: AnimatedContent for smooth transition between home and expanded player
+                AnimatedContent(
+                    targetState = showPlayersView,
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        fadeIn(tween(300)) togetherWith fadeOut(tween(200))
+                    },
+                    label = "tv_player_transition"
+                ) { isPlayersViewShown ->
+                    if (!isPlayersViewShown) {
+                        val headerHeight = 280.dp
                         @Suppress("UNCHECKED_CAST")
                         val typedBackStack =
                             homeBackStack as NavBackStack<HomeNavScreen>
 
-                        TvNavigationRail(
-                            selectedDestination = currentRailDestination,
-                            onDestinationSelected = { destination ->
-                                when (destination) {
-                                    TvNavDestination.Home -> {
-                                        // Pop back to Landing
-                                        while (typedBackStack.last() !is HomeNavScreen.Landing) {
-                                            typedBackStack.removeLastOrNull() ?: break
-                                        }
-                                    }
-
-                                    TvNavDestination.Library -> {
-                                        typedBackStack.add(HomeNavScreen.Library(type = null))
-                                    }
-
-                                    TvNavDestination.Search -> {
-                                        typedBackStack.add(HomeNavScreen.Search)
-                                    }
-
-                                    TvNavDestination.NowPlaying -> {
-                                        showPlayersView = true
-                                    }
-
-                                    TvNavDestination.Settings -> {
-                                        navigateTo(NavScreen.Settings)
-                                    }
-                                }
-                            },
-                            railFocusRequester = railFocusRequester,
-                            modifier = Modifier.fillMaxHeight(),
-                        )
-
-                        Column(
+                        // Box: header overlay at top, content below
+                        Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                                .focusGroup()
                         ) {
+                            // Content area — starts below header
                             HomeContent(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = headerHeight),
                                 homeBackStack = homeBackStack,
                                 connectionState = connectionState,
                                 dataState = dataState,
@@ -349,168 +366,527 @@ fun HomeScreen(
                                 providerIconFetcher = { modifier, provider ->
                                     actionsViewModel.getProviderIcon(provider)
                                         ?.let { ProviderIcon(modifier, it) }
-                                }
+                                },
+                                onTvContextItemChanged = { tvContextItem = it },
                             )
 
-                            // Mini player area
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .wrapContentHeight()
-                                    .defaultMinSize(minHeight = 100.dp)
-                                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                // Gradient accent line
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(2.dp)
-                                        .align(Alignment.TopCenter)
-                                        .background(
-                                            Brush.horizontalGradient(
-                                                listOf(
-                                                    Color.Transparent,
-                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                                                    Color.Transparent
-                                                )
-                                            )
-                                        )
-                                )
-                                PlayersStateContent(
-                                    playersState = playersState,
-                                    pagerModifier = Modifier.fillMaxWidth().wrapContentHeight(),
-                                    playerPagerState = playerPagerState,
-                                    serverUrl = serverUrl,
-                                    showQueue = false,
-                                    isQueueExpanded = isQueueExpanded,
-                                    onQueueExpandedSwitch = { isQueueExpanded = !isQueueExpanded },
-                                    simplePlayerAction = { playerId, action -> viewModel.playerAction(playerId, action) },
-                                    playerAction = { playerData, action -> viewModel.playerAction(playerData, action) },
-                                    onPlayersRefreshClick = viewModel::refreshPlayers,
-                                    onFavoriteClick = actionsViewModel::onFavoriteClick,
-                                    onGoToLibrary = { showPlayersView = false },
-                                    onItemMoved = null,
-                                    queueAction = { action -> viewModel.queueAction(action) },
-                                    settingsAction = viewModel::openPlayerSettings,
-                                    dspSettingsAction = viewModel::openPlayerDspSettings,
-                                    tvFocusRequester = miniPlayerFocusRequester,
-                                    onNavigateUp = {
-                                        try { railFocusRequester.requestFocus() } catch (_: Exception) {}
-                                    },
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    // Expanded player — full screen, no rail
-                    val expandedFocusRequester = remember { FocusRequester() }
-                    val closeBtnFocusRequester = remember { FocusRequester() }
+                            // Top header with nav tabs, context artwork, now playing widget
+                            TvTopHeader(
+                                selectedDestination = currentRailDestination,
+                                onDestinationSelected = { destination ->
+                                    when (destination) {
+                                        TvNavDestination.Home -> {
+                                            // Pop back to Landing
+                                            while (typedBackStack.last() !is HomeNavScreen.Landing) {
+                                                typedBackStack.removeLastOrNull() ?: break
+                                            }
+                                        }
 
-                    // Album art background
-                    val currentTrack = data?.playerData
-                        ?.getOrNull(playerPagerState.currentPage)
-                        ?.queueInfo?.currentItem?.track
-                    val artUrl = currentTrack?.imageInfo?.url(serverUrl)
+                                        TvNavDestination.Library -> {
+                                            typedBackStack.add(HomeNavScreen.Library(type = null))
+                                        }
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    ) {
-                        // Album art background — drawn on top of solid background
-                        if (artUrl != null) {
-                            AsyncImage(
-                                model = artUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize().alpha(0.25f)
+                                        TvNavDestination.Search -> {
+                                            typedBackStack.add(HomeNavScreen.Search)
+                                        }
+
+                                        TvNavDestination.Settings -> {
+                                            navigateTo(NavScreen.Settings)
+                                        }
+                                    }
+                                },
+                                headerFocusRequester = headerFocusRequester,
+                                contextArtUrl = contextArtUrl,
+                                contextTitle = contextTitle,
+                                contextSubtitle = contextSubtitle,
+                                playerData = data?.playerData?.getOrNull(tvPlayerIndex),
+                                serverUrl = serverUrl,
+                                onNowPlayingClick = { showPlayersView = true },
                             )
                         }
+                    } else {
+                        // Expanded Now Playing — full screen, controls pinned at bottom
+                        val controlsFocusRequester = remember { FocusRequester() }
 
-                        // Scrim gradient for text readability over album art
+                        val currentPlayerData = data?.playerData?.getOrNull(tvPlayerIndex)
+                        val currentTrack = currentPlayerData?.queueInfo?.currentItem?.track
+                        val artUrl = currentTrack?.imageInfo?.url(serverUrl)
+                        val bgColor = MaterialTheme.colorScheme.background
+                        val isLocalPlayer = currentPlayerData?.playerId == data?.localPlayerId
+
+
+                        var showVolumeDialog by remember { mutableStateOf(false) }
+                        var showSpeakerPicker by remember { mutableStateOf(false) }
+                        val volumeLevel = currentPlayerData?.player?.currentVolume ?: 0f
+
+                        // Progress data
+                        val duration = currentTrack?.duration?.takeIf { it > 0 }?.toFloat()
+                        val elapsed = currentPlayerData?.queueInfo?.elapsedTime?.toFloat() ?: 0f
+
+                        // Close queue when leaving expanded player
+                        LaunchedEffect(Unit) {
+                            isQueueExpanded = false
+                        }
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            Color.Transparent,
-                                            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f)
-                                        )
-                                    )
-                                )
-                        )
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
+                                .background(bgColor)
                                 .focusGroup()
                         ) {
-                            LaunchedEffect(Unit) {
-                                try {
-                                    expandedFocusRequester.requestFocus()
-                                } catch (_: Exception) {
+                            // Layer 1: Backdrop art — top ~55%, fades to bg
+                            if (artUrl != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .fillMaxHeight(0.55f)
+                                        .align(Alignment.TopCenter)
+                                ) {
+                                    AsyncImage(
+                                        model = artUrl,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize().alpha(0.3f)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    0.3f to Color.Transparent,
+                                                    1f to bgColor,
+                                                )
+                                            )
+                                    )
                                 }
                             }
-                            // Close button with Down key wiring to pager content
-                            IconButton(
-                                onClick = { showPlayersView = false },
-                                modifier = Modifier.fillMaxWidth()
-                                    .align(Alignment.CenterHorizontally)
-                                    .focusRequester(closeBtnFocusRequester)
-                                    .onPreviewKeyEvent { event ->
-                                        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-                                            try {
-                                                expandedFocusRequester.requestFocus()
-                                            } catch (_: Exception) {
-                                            }
-                                            true
-                                        } else false
-                                    }
+
+                            // Layer 2: Main Column — controls always pinned at bottom
+                            Column(
+                                modifier = Modifier.fillMaxSize()
                             ) {
-                                Icon(
-                                    Icons.Default.ExpandMore,
-                                    "Collapse",
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                PlayersStateContent(
-                                    playersState = playersState,
-                                    pagerModifier = Modifier.fillMaxSize(),
-                                    playerPagerState = playerPagerState,
-                                    serverUrl = serverUrl,
-                                    showQueue = true,
-                                    isQueueExpanded = isQueueExpanded,
-                                    onQueueExpandedSwitch = { isQueueExpanded = !isQueueExpanded },
-                                    simplePlayerAction = { playerId, action -> viewModel.playerAction(playerId, action) },
-                                    playerAction = { playerData, action -> viewModel.playerAction(playerData, action) },
-                                    onPlayersRefreshClick = viewModel::refreshPlayers,
-                                    onFavoriteClick = actionsViewModel::onFavoriteClick,
-                                    onGoToLibrary = { showPlayersView = false },
-                                    onItemMoved = { indexShift ->
-                                        data?.let { d ->
-                                            val currentPlayer = d.playerData[playerPagerState.currentPage].player
-                                            val newIndex = (playerPagerState.currentPage + indexShift).coerceIn(0, d.playerData.size - 1)
-                                            val newPlayers = d.playerData.map { it.player.id }.toMutableList().apply {
-                                                add(newIndex, removeAt(playerPagerState.currentPage))
+                                // Close button (top center)
+                                IconButton(
+                                    onClick = { showPlayersView = false },
+                                    modifier = Modifier
+                                        .align(Alignment.CenterHorizontally)
+                                        .padding(top = 8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.ExpandMore,
+                                        "Collapse",
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+
+                                Spacer(Modifier.weight(1f))
+
+                                // Bottom control panel — always pinned at bottom
+                                LaunchedEffect(Unit) {
+                                    try { controlsFocusRequester.requestFocus() } catch (_: Exception) {}
+                                }
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 48.dp)
+                                        .padding(bottom = 32.dp)
+                                        .focusRequester(controlsFocusRequester)
+                                        .focusGroup()
+                                ) {
+                                    // Row: mini art on left, track info on right
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        // Mini album art (100dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(100.dp)
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(
+                                                    MaterialTheme.colorScheme.primaryContainer.copy(
+                                                        alpha = if (artUrl != null) 1f else 0.4f
+                                                    )
+                                                ),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            if (artUrl != null) {
+                                                AsyncImage(
+                                                    model = artUrl,
+                                                    contentDescription = currentTrack?.name,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Default.MusicNote,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(40.dp),
+                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.4f)
+                                                )
                                             }
-                                            viewModel.selectPlayer(currentPlayer)
-                                            viewModel.onPlayersSortChanged(newPlayers)
                                         }
-                                    },
-                                    queueAction = { action -> viewModel.queueAction(action) },
-                                    settingsAction = viewModel::openPlayerSettings,
-                                    dspSettingsAction = viewModel::openPlayerDspSettings,
-                                    tvFocusRequester = expandedFocusRequester,
-                                    onNavigateUp = {
-                                        try { closeBtnFocusRequester.requestFocus() } catch (_: Exception) {}
-                                    },
+
+                                        Spacer(Modifier.width(24.dp))
+
+                                        // Track title + subtitle
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = currentTrack?.name ?: "--idle--",
+                                                style = MaterialTheme.typography.headlineMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                            )
+                                            currentTrack?.subtitle?.let {
+                                                Text(
+                                                    text = it,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(Modifier.height(20.dp))
+
+                                    // Selectors row — TvNavTab style, centered
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        ) {
+                                            TvPlayerTab(
+                                                icon = Icons.Default.Speaker,
+                                                label = currentPlayerData?.player?.displayName ?: "Speaker",
+                                                isSelected = showSpeakerPicker,
+                                                onClick = { showSpeakerPicker = true },
+                                            )
+                                            TvPlayerTab(
+                                                icon = Icons.AutoMirrored.Filled.QueueMusic,
+                                                label = "Queue",
+                                                isSelected = isQueueExpanded,
+                                                onClick = { isQueueExpanded = !isQueueExpanded },
+                                            )
+                                            if (currentPlayerData?.player?.canSetVolume == true && !isLocalPlayer) {
+                                                TvPlayerTab(
+                                                    icon = if (currentPlayerData.player.volumeMuted)
+                                                        Icons.AutoMirrored.Filled.VolumeMute
+                                                    else Icons.AutoMirrored.Filled.VolumeUp,
+                                                    label = "Vol ${volumeLevel.toInt()}%",
+                                                    isSelected = false,
+                                                    onClick = { showVolumeDialog = true },
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(Modifier.height(16.dp))
+
+                                    // Progress bar + timestamps
+                                    LinearProgressIndicator(
+                                        progress = {
+                                            if (duration != null && duration > 0f)
+                                                (elapsed / duration).coerceIn(0f, 1f)
+                                            else 0f
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(6.dp)
+                                            .clip(RoundedCornerShape(3.dp)),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            text = elapsed.takeIf { currentTrack != null }
+                                                .formatDuration(DurationUnit.SECONDS)
+                                                .takeIf { duration != null } ?: "",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Text(
+                                            text = currentTrack?.let {
+                                                duration?.formatDuration(DurationUnit.SECONDS) ?: "\u221E"
+                                            } ?: "",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+
+                                    Spacer(Modifier.height(16.dp))
+
+                                    // Transport controls
+                                    if (currentPlayerData != null) {
+                                        PlayerControls(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            playerData = currentPlayerData,
+                                            playerAction = { pd, action -> viewModel.playerAction(pd, action) },
+                                            enabled = !currentPlayerData.player.isAnnouncing,
+                                            showVolumeButtons = false,
+                                            mainButtonSize = 64.dp,
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Layer 3: Queue slide-up overlay panel
+                            val queueFocusRequester = remember { FocusRequester() }
+                            AnimatedVisibility(
+                                visible = isQueueExpanded,
+                                enter = slideInVertically(
+                                    initialOffsetY = { it },
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioLowBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                ) + fadeIn(tween(200)),
+                                exit = slideOutVertically(
+                                    targetOffsetY = { it },
+                                    animationSpec = tween(250)
+                                ) + fadeOut(tween(200)),
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                LaunchedEffect(Unit) {
+                                    try { queueFocusRequester.requestFocus() } catch (_: Exception) {}
+                                }
+                                // Scrim + panel
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.5f))
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                                        ) { isQueueExpanded = false },
+                                    contentAlignment = Alignment.BottomCenter,
+                                ) {
+                                    // Queue panel — bottom 65% of screen
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .fillMaxHeight(0.65f)
+                                            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                            .clickable(
+                                                indication = null,
+                                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                                            ) { /* consume clicks on panel */ }
+                                            .focusRequester(queueFocusRequester)
+                                            .focusGroup()
+                                            .padding(top = 16.dp),
+                                    ) {
+                                        // Handle bar
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.CenterHorizontally)
+                                                .size(width = 40.dp, height = 4.dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
+                                        )
+
+                                        // Header row
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.QueueMusic,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(24.dp),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                            Spacer(Modifier.width(12.dp))
+                                            Text(
+                                                text = "Queue",
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            IconButton(
+                                                onClick = { isQueueExpanded = false }
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    "Close queue",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        }
+
+                                        // Queue content (no toggle button — our header handles that)
+                                        if (currentPlayerData != null) {
+                                            currentPlayerData.queue?.let { queue ->
+                                                CollapsibleQueue(
+                                                    modifier = Modifier.weight(1f),
+                                                    queue = queue,
+                                                    isQueueExpanded = true,
+                                                    onQueueExpandedSwitch = { isQueueExpanded = false },
+                                                    onGoToLibrary = {
+                                                        isQueueExpanded = false
+                                                        showPlayersView = false
+                                                    },
+                                                    serverUrl = serverUrl,
+                                                    queueAction = { action -> viewModel.queueAction(action) },
+                                                    players = data?.playerData ?: emptyList(),
+                                                    onPlayerSelected = { playerId ->
+                                                        data?.playerData?.indexOfFirst { it.player.id == playerId }
+                                                            ?.takeIf { it >= 0 }?.let { idx ->
+                                                                tvPlayerIndex = idx
+                                                                viewModel.selectPlayer(data.playerData[idx].player)
+                                                            }
+                                                    },
+                                                    isCurrentPage = true,
+                                                    showToggleButton = false,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Layer 4: Speaker picker slide-up overlay
+                            val speakerFocusRequester = remember { FocusRequester() }
+                            AnimatedVisibility(
+                                visible = showSpeakerPicker && data != null,
+                                enter = slideInVertically(
+                                    initialOffsetY = { it },
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioLowBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                ) + fadeIn(tween(200)),
+                                exit = slideOutVertically(
+                                    targetOffsetY = { it },
+                                    animationSpec = tween(250)
+                                ) + fadeOut(tween(200)),
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                LaunchedEffect(Unit) {
+                                    try { speakerFocusRequester.requestFocus() } catch (_: Exception) {}
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.5f))
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                                        ) { showSpeakerPicker = false },
+                                    contentAlignment = Alignment.BottomCenter,
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                            .clickable(
+                                                indication = null,
+                                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                                            ) { /* consume */ }
+                                            .focusRequester(speakerFocusRequester)
+                                            .focusGroup()
+                                            .padding(top = 16.dp, bottom = 24.dp),
+                                    ) {
+                                        // Handle bar
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.CenterHorizontally)
+                                                .size(width = 40.dp, height = 4.dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
+                                        )
+
+                                        // Header row
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Speaker,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(24.dp),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                            Spacer(Modifier.width(12.dp))
+                                            Text(
+                                                text = "Select Speaker",
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            IconButton(
+                                                onClick = { showSpeakerPicker = false }
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    "Close speaker picker",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        }
+
+                                        // Speaker list
+                                        data?.playerData?.forEachIndexed { index, pd ->
+                                            val isCurrentSpeaker = index == tvPlayerIndex
+                                            val primary = MaterialTheme.colorScheme.primary
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        tvPlayerIndex = index
+                                                        viewModel.selectPlayer(pd.player)
+                                                        showSpeakerPicker = false
+                                                    }
+                                                    .then(
+                                                        if (isCurrentSpeaker)
+                                                            Modifier.background(primary.copy(alpha = 0.12f))
+                                                        else Modifier
+                                                    )
+                                                    .padding(horizontal = 24.dp, vertical = 14.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Speaker,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(20.dp),
+                                                    tint = if (isCurrentSpeaker) primary
+                                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                                Spacer(Modifier.width(16.dp))
+                                                Text(
+                                                    text = pd.player.displayName,
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    fontWeight = if (isCurrentSpeaker) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (isCurrentSpeaker) primary
+                                                    else MaterialTheme.colorScheme.onSurface,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Volume dialog
+                            if (showVolumeDialog && currentPlayerData != null) {
+                                VolumeDialog(
+                                    player = currentPlayerData,
+                                    playerAction = { pd, action -> viewModel.playerAction(pd, action) },
+                                    onDismiss = { showVolumeDialog = false },
                                 )
                             }
                         }
@@ -802,13 +1178,12 @@ private fun HomeContent(
     onTrackPlayOption: (PlayableItem, QueueOption) -> Unit,
     playlistActions: ActionsViewModel.PlaylistActions,
     libraryActions: ActionsViewModel.LibraryActions,
-    providerIconFetcher: (@Composable (Modifier, String) -> Unit)
+    providerIconFetcher: (@Composable (Modifier, String) -> Unit),
+    onTvContextItemChanged: ((AppMediaItem?) -> Unit)? = null,
 ) {
     @Suppress("UNCHECKED_CAST")
     val typedBackStack = homeBackStack as NavBackStack<HomeNavScreen>
 
-//    val homeBottomSheetStrategy = remember { BottomSheetSceneStrategy<NavKey>() }
-//    val homeDialogStrategy = remember { DialogSceneStrategy<NavKey>() }
     val saveableStateHolderForHome = rememberSaveableStateHolder()
 
     // Handle back when library is open
@@ -820,7 +1195,6 @@ private fun HomeContent(
         modifier = modifier,
         backStack = typedBackStack,
         onBack = { typedBackStack.removeLastOrNull() },
-//        sceneStrategy = homeBottomSheetStrategy.then(homeDialogStrategy),
         entryDecorators = listOf(
             rememberSaveableStateHolderNavEntryDecorator(saveableStateHolderForHome)
         ),
@@ -863,7 +1237,8 @@ private fun HomeContent(
                     },
                     playlistActions = playlistActions,
                     libraryActions = libraryActions,
-                    providerIconFetcher = providerIconFetcher
+                    providerIconFetcher = providerIconFetcher,
+                    onItemFocused = onTvContextItemChanged,
                 )
             }
 
@@ -890,7 +1265,8 @@ private fun HomeContent(
                                 // TODO: Handle track clicks or other item types
                             }
                         }
-                    }
+                    },
+                    onFocusedItemChanged = onTvContextItemChanged,
                 )
             }
 
@@ -908,7 +1284,8 @@ private fun HomeContent(
                                 providerId = providerId
                             )
                         )
-                    }
+                    },
+                    onItemLoaded = onTvContextItemChanged,
                 )
             }
 
@@ -928,4 +1305,47 @@ private fun HomeContent(
             }
         }
     )
+}
+
+@Composable
+private fun TvPlayerTab(
+    icon: ImageVector,
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val shape = RoundedCornerShape(12.dp)
+    val defaultColor = MaterialTheme.colorScheme.onSurfaceVariant
+    var isFocused by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .onFocusChanged { isFocused = it.isFocused }
+            .clip(shape)
+            .then(
+                if (isFocused || isSelected) Modifier.border(2.5.dp, primary, shape)
+                else Modifier
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = Modifier.size(20.dp),
+                tint = defaultColor,
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = defaultColor,
+            )
+        }
+    }
 }

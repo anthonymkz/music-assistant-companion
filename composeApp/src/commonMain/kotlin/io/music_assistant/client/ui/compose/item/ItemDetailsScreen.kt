@@ -2,6 +2,7 @@
 
 package io.music_assistant.client.ui.compose.item
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -21,6 +23,13 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FeaturedPlayList
+import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Podcasts
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
@@ -42,9 +51,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import io.music_assistant.client.ui.theme.HeaderFontFamily
+import io.music_assistant.client.utils.LocalPlatformType
+import io.music_assistant.client.utils.PlatformType
 import io.music_assistant.client.data.model.client.AppMediaItem
 import io.music_assistant.client.data.model.client.PlayableItem
 import io.music_assistant.client.data.model.server.MediaType
@@ -74,6 +92,7 @@ fun ItemDetailsScreen(
     providerId: String,
     onBack: () -> Unit,
     onNavigateToItem: (String, MediaType, String) -> Unit,
+    onItemLoaded: ((AppMediaItem?) -> Unit)? = null,
 ) {
     val viewModel: ItemDetailsViewModel = koinViewModel()
     val actionsViewModel: ActionsViewModel = koinViewModel()
@@ -90,6 +109,17 @@ fun ItemDetailsScreen(
         viewModel.toasts.collect { toast ->
             toastState.showToast(toast)
         }
+    }
+
+    // Report loaded item to parent for TV header context
+    val itemState = state.itemState
+    LaunchedEffect(itemState) {
+        val item = when (itemState) {
+            is DataState.Data -> itemState.data
+            is DataState.Stale -> itemState.data
+            else -> null
+        }
+        onItemLoaded?.invoke(item)
     }
 
     ItemDetailsContent(
@@ -179,40 +209,207 @@ private fun ItemDetailsContent(
                     else -> return@Box
                 }
 
-                LazyVerticalGrid(
-                    modifier = Modifier.fillMaxSize(),
-                    columns = GridCells.Adaptive(minSize = 96.dp),
-                    contentPadding = PaddingValues(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Header section - spans full width
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        HeaderSection(
-                            item = item,
-                            serverUrl = serverUrl,
-                            onPlayClick = onPlayClick,
-                            playlistActions = playlistActions.takeIf { item is AppMediaItem.Track || item is AppMediaItem.Album },
-                            libraryActions = libraryActions,
-                            providerIconFetcher = providerIconFetcher,
-                        )
-                    }
+                val isTV = LocalPlatformType.current == PlatformType.TV
 
-                    // For Artist: Albums section
-                    if (item is AppMediaItem.Artist) {
-                        when (val albumsState = state.albumsState) {
-                            is DataState.Data -> {
-                                if (albumsState.data.isNotEmpty()) {
-                                    item(span = { GridItemSpan(maxLineSpan) }) {
-                                        SectionHeader("Albums")
+                if (isTV) {
+                    // TV: no sticky header (TvTopHeader handles context art/text)
+                    // Just show Play button + scrollable grid
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Play button row
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Button(onClick = { onPlayClick(QueueOption.REPLACE) }) {
+                                Icon(Icons.Default.PlayArrow, null)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Play")
+                            }
+                        }
+
+                        Box(modifier = Modifier.fillMaxSize()) {
+                        LazyVerticalGrid(
+                            modifier = Modifier.fillMaxSize(),
+                            columns = GridCells.Adaptive(minSize = 140.dp),
+                            contentPadding = PaddingValues(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // For Artist: Albums section
+                            if (item is AppMediaItem.Artist) {
+                                when (val albumsState = state.albumsState) {
+                                    is DataState.Data -> {
+                                        if (albumsState.data.isNotEmpty()) {
+                                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                                SectionHeader("Albums")
+                                            }
+                                            items(albumsState.data) { album ->
+                                                MediaItemAlbum(
+                                                    item = album,
+                                                    serverUrl = serverUrl,
+                                                    onClick = { onSubItemClick(album) },
+                                                    providerIconFetcher = providerIconFetcher,
+                                                )
+                                            }
+                                        }
                                     }
-                                    items(albumsState.data) { album ->
-                                        MediaItemAlbum(
-                                            item = album,
-                                            serverUrl = serverUrl,
-                                            onClick = { onSubItemClick(album) },
-                                            providerIconFetcher = providerIconFetcher,
+
+                                    is DataState.Loading -> {
+                                        item(span = { GridItemSpan(maxLineSpan) }) {
+                                            Box(
+                                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                CircularProgressIndicator()
+                                            }
+                                        }
+                                    }
+
+                                    else -> Unit
+                                }
+                            }
+
+                            // Tracks section (all types)
+                            when (val tracksState = state.tracksState) {
+                                is DataState.Data -> {
+                                    if (tracksState.data.isNotEmpty()) {
+                                        item(span = { GridItemSpan(maxLineSpan) }) {
+                                            SectionHeader(
+                                                when (item) {
+                                                    is AppMediaItem.Podcast -> "Episodes"
+                                                    else -> "Tracks"
+                                                }
+                                            )
+                                        }
+                                        tracksState.data.forEachIndexed { index, track ->
+                                            item {
+                                                TrackWithMenu(
+                                                    item = track,
+                                                    serverUrl = serverUrl,
+                                                    onTrackPlayOption = onTrackClick,
+                                                    playlistActions = playlistActions
+                                                        .takeIf { item !is AppMediaItem.Playlist },
+                                                    onRemoveFromPlaylist = if (item is AppMediaItem.Playlist && item.isEditable == true) {
+                                                        { onRemoveFromPlaylist(item.itemId, index) }
+                                                    } else null,
+                                                    libraryActions = libraryActions,
+                                                    providerIconFetcher = providerIconFetcher,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                is DataState.Loading -> {
+                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator()
+                                        }
+                                    }
+                                }
+
+                                else -> Unit
+                            }
+                        }
+                        // Soft fade overlay at top
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(24.dp)
+                                .align(Alignment.TopCenter)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(MaterialTheme.colorScheme.background, Color.Transparent)
+                                    )
+                                )
+                        )
+                        }
+                    }
+                } else {
+                    // Phone: single LazyVerticalGrid with header
+                    LazyVerticalGrid(
+                        modifier = Modifier.fillMaxSize(),
+                        columns = GridCells.Adaptive(minSize = 96.dp),
+                        contentPadding = PaddingValues(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Header section - spans full width
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            HeaderSection(
+                                item = item,
+                                serverUrl = serverUrl,
+                                onPlayClick = onPlayClick,
+                                playlistActions = playlistActions.takeIf { item is AppMediaItem.Track || item is AppMediaItem.Album },
+                                libraryActions = libraryActions,
+                                providerIconFetcher = providerIconFetcher,
+                            )
+                        }
+
+                        // For Artist: Albums section
+                        if (item is AppMediaItem.Artist) {
+                            when (val albumsState = state.albumsState) {
+                                is DataState.Data -> {
+                                    if (albumsState.data.isNotEmpty()) {
+                                        item(span = { GridItemSpan(maxLineSpan) }) {
+                                            SectionHeader("Albums")
+                                        }
+                                        items(albumsState.data) { album ->
+                                            MediaItemAlbum(
+                                                item = album,
+                                                serverUrl = serverUrl,
+                                                onClick = { onSubItemClick(album) },
+                                                providerIconFetcher = providerIconFetcher,
+                                            )
+                                        }
+                                    }
+                                }
+
+                                is DataState.Loading -> {
+                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator()
+                                        }
+                                    }
+                                }
+
+                                else -> Unit
+                            }
+                        }
+
+                        // Tracks section (all types)
+                        when (val tracksState = state.tracksState) {
+                            is DataState.Data -> {
+                                if (tracksState.data.isNotEmpty()) {
+                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                        SectionHeader(
+                                            when (item) {
+                                                is AppMediaItem.Podcast -> "Episodes"
+                                                else -> "Tracks"
+                                            }
                                         )
+                                    }
+                                    tracksState.data.forEachIndexed { index, track ->
+                                        item {
+                                            TrackWithMenu(
+                                                item = track,
+                                                serverUrl = serverUrl,
+                                                onTrackPlayOption = onTrackClick,
+                                                playlistActions = playlistActions
+                                                    .takeIf { item !is AppMediaItem.Playlist },
+                                                onRemoveFromPlaylist = if (item is AppMediaItem.Playlist && item.isEditable == true) {
+                                                    { onRemoveFromPlaylist(item.itemId, index) }
+                                                } else null,
+                                                libraryActions = libraryActions,
+                                                providerIconFetcher = providerIconFetcher,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -230,53 +427,6 @@ private fun ItemDetailsContent(
 
                             else -> Unit
                         }
-                    }
-
-                    // Tracks section (all types)
-                    when (val tracksState = state.tracksState) {
-                        is DataState.Data -> {
-                            if (tracksState.data.isNotEmpty()) {
-                                item(span = { GridItemSpan(maxLineSpan) }) {
-                                    SectionHeader(
-                                        when (item) {
-                                            is AppMediaItem.Podcast -> "Episodes"
-                                            else -> "Tracks"
-                                        }
-                                    )
-                                }
-                                tracksState.data.forEachIndexed { index, track ->
-                                    item {
-                                        TrackWithMenu(
-                                            item = track,
-                                            serverUrl = serverUrl,
-                                            onTrackPlayOption = onTrackClick,
-                                            // Don't show "add to playlist" for playlist items
-                                            playlistActions = playlistActions
-                                                .takeIf { item !is AppMediaItem.Playlist },
-                                            // Show "remove from playlist" only for playlist items
-                                            onRemoveFromPlaylist = if (item is AppMediaItem.Playlist && item.isEditable == true) {
-                                                { onRemoveFromPlaylist(item.itemId, index) }
-                                            } else null,
-                                            libraryActions = libraryActions,
-                                            providerIconFetcher = providerIconFetcher,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        is DataState.Loading -> {
-                            item(span = { GridItemSpan(maxLineSpan) }) {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator()
-                                }
-                            }
-                        }
-
-                        else -> Unit
                     }
                 }
             }
@@ -298,9 +448,11 @@ private fun ItemDetailsContent(
                 .fillMaxSize()
                 .padding(bottom = 48.dp)
         )
-        // Place it here so it'd be clickable
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+        // Place it here so it'd be clickable (phone only — TV has back in sticky header)
+        if (LocalPlatformType.current != PlatformType.TV) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+            }
         }
     }
 }
@@ -476,4 +628,150 @@ private fun SectionHeader(title: String) {
         style = MaterialTheme.typography.titleMedium,
         modifier = Modifier.padding(16.dp, 8.dp)
     )
+}
+
+/**
+ * TV sticky header: artwork fading into background on the right, text + controls on the left.
+ */
+@Composable
+private fun TvItemDetailsHeader(
+    item: AppMediaItem,
+    serverUrl: String?,
+    onBack: () -> Unit,
+    onPlayClick: (QueueOption) -> Unit,
+    playlistActions: ActionsViewModel.PlaylistActions?,
+    libraryActions: ActionsViewModel.LibraryActions,
+    providerIconFetcher: @Composable ((Modifier, String) -> Unit)?,
+) {
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val artUrl = item.imageInfo?.url(serverUrl)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp)
+            .background(backgroundColor)
+    ) {
+        // Artwork filling the background with all-sides fade
+        if (artUrl != null) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                AsyncImage(
+                    model = artUrl,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(0.7f)
+                )
+                // Left edge fade
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    backgroundColor,
+                                    backgroundColor.copy(alpha = 0.3f),
+                                    Color.Transparent,
+                                )
+                            )
+                        )
+                )
+                // Top edge fade
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    backgroundColor.copy(alpha = 0.7f),
+                                    Color.Transparent,
+                                )
+                            )
+                        )
+                )
+                // Bottom edge fade
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    backgroundColor.copy(alpha = 0.7f),
+                                )
+                            )
+                        )
+                )
+                // Right edge fade
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    backgroundColor.copy(alpha = 0.3f),
+                                    backgroundColor,
+                                )
+                            )
+                        )
+                )
+            }
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = iconForMediaItem(item),
+                    contentDescription = null,
+                    modifier = Modifier.size(80.dp).alpha(0.12f),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+
+        // Text content on the left
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 24.dp, end = 16.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = item.name,
+                style = MaterialTheme.typography.headlineLarge,
+                fontFamily = HeaderFontFamily,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            item.subtitle?.let { subtitle ->
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Button(onClick = { onPlayClick(QueueOption.REPLACE) }) {
+                Icon(Icons.Default.PlayArrow, null)
+                Spacer(Modifier.width(4.dp))
+                Text("Play")
+            }
+        }
+    }
+}
+
+private fun iconForMediaItem(item: AppMediaItem): ImageVector = when (item) {
+    is AppMediaItem.Track -> Icons.Default.MusicNote
+    is AppMediaItem.Artist -> Icons.Default.Mic
+    is AppMediaItem.Album -> Icons.Default.Album
+    is AppMediaItem.Playlist -> Icons.AutoMirrored.Filled.FeaturedPlayList
+    is AppMediaItem.Podcast, is AppMediaItem.PodcastEpisode -> Icons.Default.Podcasts
+    is AppMediaItem.RadioStation -> Icons.Default.Radio
+    else -> Icons.Default.MusicNote
 }
