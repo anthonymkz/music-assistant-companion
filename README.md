@@ -18,7 +18,7 @@ A fully-functional, community-driven fork of the [Music Assistant Mobile App](ht
 
 ## Why This Fork Exists
 
-We built full [Android TV support](https://github.com/music-assistant/mobile-app/pull/88) — D-pad navigation, leanback launcher integration, media remote keys, and more — and submitted it upstream to the original Music Assistant mobile app. The upstream maintainers didn't seem interested in merging these features, so here we are.
+We built full [Android TV support](https://github.com/music-assistant/mobile-app/pull/88) — D-pad navigation, leanback launcher integration, media remote keys, and more — and submitted it upstream to the original Music Assistant mobile app. The upstream project had different priorities and the changes weren't a fit for their roadmap, so we decided to maintain them independently.
 
 This project is **100% functional** and actively maintained. We sync upstream changes when applicable, and our focus is delivering the best Music Assistant experience across all screen sizes — from your pocket to your living room.
 
@@ -41,10 +41,13 @@ This project is **100% functional** and actively maintained. We sync upstream ch
 
 ### Android TV
 - Full leanback launcher integration with TV banner
-- Native left NavigationRail — Home, Library, Search, Now Playing, Settings
+- Full-width top header with brand, nav tabs, context artwork fades, and now-playing widget
+- Expanded Now Playing screen with backdrop art, transport controls, and track info
+- Animated slide-up queue panel with transfer and clear actions
+- Speaker picker overlay for switching between players
 - Complete D-pad focus management throughout the entire app
+- Consistent primary-color focus borders on all D-pad navigable elements
 - Media remote key support — play/pause, next, previous
-- Speaker selector dialog replacing swipe gestures
 - Volume dialog with +/- buttons replacing sliders
 - Larger grid cells and controls optimized for the 10-foot UI
 - Visible three-dot menus on playable items (long-press isn't discoverable with a remote)
@@ -65,13 +68,14 @@ The original app ships with a functional but plain interface — flat background
 - **Spring-based transitions** — expanding the player uses bouncy spring animations with scale and fade effects instead of linear slides
 
 **TV (10-foot UI)**
-- **Larger navigation rail** — 40dp logo with breathing room, better visibility from across the room
+- **Full-width top header** — brand logo, nav tabs, context artwork fades, and now-playing widget replace the old sidebar rail
+- **Expanded player with backdrop art** — full-screen now-playing with blurred album art, transport controls, and slide-up queue/speaker overlays
+- **Primary-color focus borders** — consistent 2dp white/primary borders with subtle scale on all D-pad navigable elements
 - **Scrim gradient on expanded player** — vertical gradient overlay improves text readability over album art backgrounds
 - **Thicker progress bar** — 6dp height with 3dp rounded corners, easier to see at a distance
 - **Bigger touch/D-pad targets** — top bar icons at 40dp/24dp, volume dialog buttons at 48dp, queue album art at 56dp
 - **Current-playing queue highlight** — subtle `primaryContainer` background tint on the active track
-- **Subtler page gradients** — replaced the dated `primaryContainer` tint with neutral `surfaceContainer` gradients
-- **Volume dialog polish** — Surface-wrapped progress bar and oversized icon buttons for remote-friendly interaction
+- **Volume dialog polish** — border-styled buttons with large percentage display for remote-friendly interaction
 
 ### Settings & Authentication *(Improved)*
 - Refactored section-based layout with Material3 cards
@@ -100,9 +104,7 @@ The app interfaces with the [Music Assistant Server](https://github.com/music-as
 
 ### Download
 
-Grab the latest debug APK from the [Releases page](https://github.com/anthonymkz/music-assistant-companion/releases).
-
-> *This is a debug build for testing. Production releases are on the roadmap.*
+Grab the latest signed release APK from the [Releases page](https://github.com/anthonymkz/music-assistant-companion/releases).
 
 ### Android Auto Setup
 
